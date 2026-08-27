@@ -25,6 +25,11 @@ ARG MODEL_NAME=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('${MODEL_NAME}')" \
  && chmod -R a+rX /opt/models
 
+# The model is now in the image. Revalidating it against the Hub on every start
+# would make the container need network access at runtime, so pin it offline.
+# Override with -e HF_HUB_OFFLINE=0 when pointing PDF_SEARCH_MODEL at another model.
+ENV HF_HUB_OFFLINE=1     TRANSFORMERS_OFFLINE=1     HF_HUB_DISABLE_TELEMETRY=1
+
 COPY src/ ./src/
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
@@ -37,6 +42,11 @@ RUN useradd --create-home --uid 1000 appuser \
 USER appuser
 
 EXPOSE 8000
+
+# The API loads the model and index during startup, which takes tens of seconds
+# on a cold container. The healthcheck makes that state visible instead of
+# looking like a hang.
+HEALTHCHECK --interval=10s --timeout=5s --start-period=180s --retries=3   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=4).status==200 else 1)"
 
 ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["api"]

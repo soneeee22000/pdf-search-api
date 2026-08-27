@@ -31,6 +31,10 @@ docker run --rm -p 8000:8000 \
   -v "$(pwd)/storage:/storage:ro" \
   pdf-search-api api
 
+# 5b. The API loads the model and index at startup. On a cold container that
+#     takes tens of seconds -- wait for health to report ok before querying.
+curl -s localhost:8000/health
+
 # 6. Query
 curl -s localhost:8000/search \
   -H 'Content-Type: application/json' \
@@ -62,6 +66,10 @@ Invoke-RestMethod -Uri http://localhost:8000/search -Method Post `
 **Rebuilding after the PDF folder changes:** re-run step 3. Every run is a full rebuild; the new snapshot is
 written to a staging directory, validated, and only then swapped into place. Stop the API first — ingestion
 and serving are separate commands and the API holds the index open.
+
+> **Windows note:** in Git Bash, MSYS rewrites container paths such as `/input` into Windows paths, and the
+> ingest command then fails with `input directory does not exist: C:/Program Files/Git/input`. Prefix the
+> command with `MSYS_NO_PATHCONV=1`, or use PowerShell. This is a Git Bash quirk, not a container problem.
 
 ### Running without Docker
 
