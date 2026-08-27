@@ -49,7 +49,12 @@ class SentenceTransformerEmbedder:
 
         self._model_name = model_name
         self._model = SentenceTransformer(model_name)
-        self._dim = int(self._model.get_sentence_embedding_dimension())
+        # Renamed in sentence-transformers 5.x; support both so the console
+        # stays clean across versions.
+        dimension_of = getattr(
+            self._model, "get_embedding_dimension", None
+        ) or self._model.get_sentence_embedding_dimension
+        self._dim = int(dimension_of())
 
     @property
     def name(self) -> str:
