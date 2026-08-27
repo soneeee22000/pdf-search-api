@@ -155,6 +155,10 @@ roughly twice the model's window**. Half of every such chunk would be discarded 
 API still returned the full text to the caller_. The vector would describe the head of the passage; the
 response would show all of it. Nothing errors, and the symptom looks like a chunking problem.
 
+That ratio depends on text density -- sparse, heavily-formatted pages tokenise more cheaply than continuous
+prose -- so the budget is enforced by measuring each chunk with the real tokenizer rather than by assuming a
+character count.
+
 So the budget is **110 tokens of content** (≈432 characters of French here), measured with the model's own
 tokenizer and asserted in the test suite. Chunks are assembled at natural boundaries — paragraph, line,
 sentence, then whitespace — with a ~20-token overlap carried as whole trailing sentences.
