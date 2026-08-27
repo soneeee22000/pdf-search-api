@@ -1,0 +1,25 @@
+# The PDFs were provided by Datapolitics. They are not ours to publish.
+sample-pdfs/
+storage/
+storage.staging/
+*.faiss
+
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+models/
+.env
+.DS_Store
+
+# AI tooling artefacts
+.claude/
+.sixth/
+.cursor/

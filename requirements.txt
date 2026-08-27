@@ -1,0 +1,10 @@
+# Pinned so the Docker build is reproducible on the reviewer's machine.
+# Versions verified against PyPI on 2026-08-27. numpy is held at the newest
+# release still publishing a cp310 wheel, so the package installs on 3.10-3.12.
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+pydantic==2.13.4
+pypdfium2==5.13.0
+faiss-cpu==1.15.0
+numpy==2.2.6
+sentence-transformers==5.7.0
