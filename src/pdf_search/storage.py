@@ -88,19 +88,26 @@ def save(
     chunks: list[ChunkRecord],
     manifest: Manifest,
 ) -> None:
-    """Write the snapshot to a temp directory, validate it, then replace output_dir.
+    """Write the snapshot to a staging area, validate it, then publish it.
+
+    Staging lives *inside* output_dir rather than beside it. The output
+    directory is typically a mounted volume whose parent is the container root,
+    which a non-root user cannot write to -- a sibling staging directory fails
+    with EACCES there.
 
     Ingestion and serving are separate commands, so the API is not running
     during a rebuild. This is not an atomic directory swap -- a portable one
-    does not exist -- but a half-written snapshot never becomes the live one.
+    does not exist -- but the snapshot is fully written and reloaded before any
+    live file is touched, so a failed build never replaces a good index.
     """
     if index.ntotal != len(chunks):
         raise ValueError(f"index has {index.ntotal} vectors but {len(chunks)} chunks were given")
 
-    staging = output_dir.with_name(f"{output_dir.name}.staging")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    staging = output_dir / ".staging"
     if staging.exists():
         shutil.rmtree(staging)
-    staging.mkdir(parents=True)
+    staging.mkdir()
 
     faiss.write_index(index, str(staging / INDEX_FILENAME))
     with (staging / METADATA_FILENAME).open("w", encoding="utf-8") as handle:
@@ -110,9 +117,9 @@ def save(
 
     _validate(staging)
 
-    if output_dir.exists():
-        shutil.rmtree(output_dir)
-    staging.replace(output_dir)
+    for filename in (INDEX_FILENAME, METADATA_FILENAME, MANIFEST_FILENAME):
+        (staging / filename).replace(output_dir / filename)
+    shutil.rmtree(staging)
 
 
 def _validate(directory: Path) -> None:

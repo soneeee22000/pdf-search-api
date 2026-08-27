@@ -138,3 +138,44 @@ def test_save_refuses_a_vector_count_that_disagrees_with_the_chunks(
 
     with pytest.raises(ValueError, match="chunks"):
         storage.save(tmp_path / "storage", index, chunks, _manifest(fake_embedder.dim, 3))
+
+
+def test_save_works_when_the_output_directory_parent_is_not_writable(
+    tmp_path: Path, fake_embedder, monkeypatch
+) -> None:
+    """Regression: staging must live inside output_dir, not beside it.
+
+    In Docker the output directory is a mounted volume whose parent is the
+    container root. A sibling staging directory fails there with EACCES, which
+    is exactly what the first real container run hit.
+    """
+    chunks = _chunks()
+    vectors = fake_embedder.encode([c.text for c in chunks])
+    index = storage.build_index(vectors, fake_embedder.dim)
+    out = tmp_path / "mounted"
+    out.mkdir()
+
+    real_mkdir = Path.mkdir
+
+    def deny_outside(self, *args, **kwargs):
+        if self.parent == tmp_path and self != out:
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", deny_outside)
+    storage.save(out, index, chunks, _manifest(fake_embedder.dim, len(chunks)))
+    monkeypatch.undo()
+
+    assert storage.load(out).index.ntotal == 3
+
+
+def test_staging_directory_is_cleaned_up(tmp_path: Path, fake_embedder) -> None:
+    """A leftover .staging directory would confuse the next run."""
+    directory = _save(tmp_path, fake_embedder)
+
+    assert not (directory / ".staging").exists()
+    assert sorted(p.name for p in directory.iterdir()) == [
+        storage.INDEX_FILENAME,
+        storage.MANIFEST_FILENAME,
+        storage.METADATA_FILENAME,
+    ]
