@@ -67,9 +67,11 @@ Invoke-RestMethod -Uri http://localhost:8000/search -Method Post `
 written to a staging directory, validated, and only then swapped into place. Stop the API first — ingestion
 and serving are separate commands and the API holds the index open.
 
-> **Windows note:** in Git Bash, MSYS rewrites container paths such as `/input` into Windows paths, and the
-> ingest command then fails with `input directory does not exist: C:/Program Files/Git/input`. Prefix the
-> command with `MSYS_NO_PATHCONV=1`, or use PowerShell. This is a Git Bash quirk, not a container problem.
+> **Windows note:** in Git Bash, MSYS rewrites container paths into Windows paths, so `/input` becomes
+> something like `C:/Program Files/Git/input`. Ingestion then fails with `input directory does not exist`,
+> and — less obviously — `docker run` for the API silently mounts the wrong directory, so `/health` reports
+> `unavailable` even though `storage/` is populated. Prefix **every** `docker run` here with
+> `MSYS_NO_PATHCONV=1`, or use PowerShell. This is a Git Bash quirk, not a container problem.
 
 ### Running without Docker
 
@@ -81,7 +83,7 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu   # CPU-only,
 PYTHONPATH=src python -m pdf_search.ingest --input-dir ./sample-pdfs --output-dir ./storage
 PYTHONPATH=src uvicorn pdf_search.api:app --reload
 
-PYTHONPATH=src pytest        # ~40 tests, no network, no model download
+PYTHONPATH=src pytest        # 54 tests, no network, no model download
 ```
 
 ---
@@ -124,6 +126,9 @@ more similar**, and results are sorted descending.
 
 Reports whether an index is loaded and how many chunks it holds. Degrades to `status: "unavailable"` with a
 diagnostic rather than erroring, so a container started without an index is still inspectable.
+
+The container's `HEALTHCHECK` requires `status: "ok"`, not merely HTTP 200 — an API that loaded but has no
+index can answer nothing, and should not be advertised as ready to an orchestrator.
 
 ---
 
@@ -245,6 +250,28 @@ inside this image. A test caught it.
 
 ## Solution Review
 
+### Tested on the supplied corpus
+
+Run through the Docker commands above, on the seven PDFs provided with the exercise:
+
+| Documents | Pages | Pages with text | Pages with no text | Chunks | Characters | Ingestion |
+| --------- | ----- | --------------- | ------------------ | ------ | ---------- | --------- |
+| 7         | 64    | 62              | 2                  | 386    | 136,561    | 10.6 s    |
+
+Two observations from that run, both matching the limitations described below:
+
+- **Both no-text pages belong to one document** — the stamped urbanisme _déclaration préalable_, which has no
+  text layer at all. Ingestion names it and warns that it contributed nothing to the index, rather than
+  reporting a clean run over a document it silently dropped. It is the OCR case, and it is why OCR routing is
+  the second item on the improvements list.
+- **No chunk was truncated.** Measured against the model's own tokenizer, the longest chunk is 112 tokens
+  including the two special tokens, against a 128-token encoder window — so every indexed vector represents
+  the whole of the text returned to the caller. That is the property the token-based sizing exists to
+  guarantee, and on this corpus it holds for all 386 chunks.
+
+Page provenance was checked rather than assumed: every one of the 386 chunks was matched back to the page it
+claims, by re-extracting each source PDF and confirming the chunk text occurs on that page. 386 of 386.
+
 ### Assumptions
 
 - Documents are **text-native**. There is no OCR, so a scanned page contributes nothing.
@@ -356,7 +383,7 @@ one.
 PYTHONPATH=src pytest
 ```
 
-Around 40 tests, running in seconds with **no network access and no model download** — the embedder and the
+Around 50 tests, running in seconds with **no network access and no model download** — the embedder and the
 token counter are both injected. They cover the token budget, page attribution, chunk-index stability, the
 French text normalisation cases, score orientation and range, the `top_k`-larger-than-corpus path, the
 index/metadata consistency guards, and the API contract and failure modes.
