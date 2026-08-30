@@ -84,5 +84,16 @@ class SentenceTransformerEmbedder:
         return np.ascontiguousarray(vectors.astype(np.float32))
 
     def count_tokens(self, text: str) -> int:
-        """Count tokens with the model's own tokenizer, excluding special tokens."""
-        return len(self._model.tokenizer.encode(text, add_special_tokens=False))
+        """Count tokens with the model's own tokenizer, excluding special tokens.
+
+        The chunker measures a whole page before deciding how to split it, so the
+        text passed here is routinely longer than the model can encode. That is
+        the question being asked, not a mistake: nothing is embedded at this
+        point. `verbose=False` suppresses the tokenizer's "longer than the
+        maximum sequence length" advisory, which would otherwise warn about
+        indexing errors that cannot happen -- every chunk this count produces is
+        checked against the budget before it reaches the encoder.
+        """
+        return len(
+            self._model.tokenizer.encode(text, add_special_tokens=False, verbose=False)
+        )
