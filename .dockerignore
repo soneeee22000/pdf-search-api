@@ -13,7 +13,4 @@ storage.staging/
 models/
 .env
 
-.claude/
-.sixth/
-.cursor/
 tests/

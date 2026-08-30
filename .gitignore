@@ -18,8 +18,3 @@ dist/
 models/
 .env
 .DS_Store
-
-# AI tooling artefacts
-.claude/
-.sixth/
-.cursor/
