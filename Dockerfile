@@ -46,7 +46,7 @@ EXPOSE 8000
 # The API loads the model and index during startup, which takes tens of seconds
 # on a cold container. The healthcheck makes that state visible instead of
 # looking like a hang.
-HEALTHCHECK --interval=10s --timeout=5s --start-period=180s --retries=3   CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=4).status==200 else 1)"
+HEALTHCHECK --interval=10s --timeout=5s --start-period=180s --retries=3   CMD python -c "import json,urllib.request,sys; sys.exit(0 if json.load(urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=4))['status']=='ok' else 1)"
 
 ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["api"]
