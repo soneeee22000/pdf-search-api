@@ -130,7 +130,7 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu   # CPU-only,
 PYTHONPATH=src python -m pdf_search.ingest --input-dir ./sample-pdfs --output-dir ./storage
 PYTHONPATH=src uvicorn pdf_search.api:app --reload
 
-PYTHONPATH=src pytest        # 54 tests, no network, no model download
+PYTHONPATH=src pytest        # 62 tests, no network, no model download
 ```
 
 ---
@@ -141,21 +141,38 @@ PYTHONPATH=src pytest        # 54 tests, no network, no model download
 
 ```json
 {
-  "query": "Quelle est la position du document sur les politiques publiques ?",
-  "top_k": 5
+  "query": "Quels sont les montants des subventions accordées aux associations ?",
+  "top_k": 3
 }
 ```
 
+A real response from the corpus below, captured from the running service. `text` is reproduced in full
+for the first hit and abridged for the others, which is the only edit made to it:
+
 ```json
 {
-  "query": "Quelle est la position du document sur les politiques publiques ?",
+  "query": "Quels sont les montants des subventions accordées aux associations ?",
   "results": [
     {
-      "document_name": "Ordre_du_jour_18-06-2026.pdf",
-      "page_number": 1,
-      "chunk_index": 42,
-      "score": 0.61,
-      "text": "Contenu du passage correspondant..."
+      "document_name": "d132664843659300_5271.pdf",
+      "page_number": 11,
+      "chunk_index": 134,
+      "score": 0.7152196168899536,
+      "text": "Région (autre fond) Département (plafonné à 25 000 €) 12 800 € 40% EPCI (fonds de concours) Autres Autofinancement 19 200 € 60% TOTAL H.T 32 000 € TOTAL H.T 32 000 € 100% APRÈS en avoir délibéré, à l'unanimité, Le Conseil municipal, APPROUVE le plan de financement prévisionnel, SOLLICITE une demande de subvention au titre de l'entretien de la voirie auprès du Président du"
+    },
+    {
+      "document_name": "d132664843659300_5271.pdf",
+      "page_number": 18,
+      "chunk_index": 191,
+      "score": 0.6899116039276123,
+      "text": "Le même article précise dans son alinéa 2 que tous groupements, œuvres ou entreprises privées qui ont reçu dans l'année en cours une ou plusieurs subventions sont tenus de fournir …"
+    },
+    {
+      "document_name": "d132664843659300_5271.pdf",
+      "page_number": 19,
+      "chunk_index": 194,
+      "score": 0.6718683242797852,
+      "text": "Associations extérieures :\nAssociations à caractère social :\nSubventions exceptionnelles :"
     }
   ]
 }
@@ -272,7 +289,7 @@ these specific documents, not against a hypothetical corpus.
 | `d235546020071500_9622.pdf`              | 3.1 % · 12 chunks · 2 pp        | Roadworks order, Jouy-en-Josas                         | Dense with identifiers (`ARR2026-222`, GPS coordinates) that dense retrieval handles poorly   |
 | `Ordre_du_jour_18-06-2026.pdf`           | 2.4 % · 9 chunks · 2 pp         | Council agenda, Grand Annecy                           | Short list items carry little context; mean pooling pushes them toward the corpus average     |
 | `AW Solutions – Dématérialisation…pdf`   | 2.2 % · 9 chunks · 2 pp         | Public tender notice / sales deck                      | Multi-column, and off-topic relative to the rest — a topical query can surface it             |
-| `260520_TABLEAU_DELIBERATIONS_SIGNE.pdf` | 2.1 % · 9 chunks · 2 pp         | Signed table of resolutions, Pluherlin                 | Linearised table: the header row that gives every other row its meaning ends up far from them |
+| `260520_TABLEAU_DELIBERATIONS_SIGNE.pdf` | 2.1 % · 10 chunks · 2 pp        | Signed table of resolutions, Pluherlin                 | Linearised table: the header row that gives every other row its meaning ends up far from them |
 | `AFF-2026.06.11-DP-…ACCORD.pdf`          | **0 %** · 0 chunks · 2 pp       | Stamped planning permission notice                     | **No text layer at all.** Scanned image. Ingested, counted, named — and contributes nothing   |
 
 So of seven documents ingested, **six are retrievable**. The seventh is the OCR case, and the
@@ -306,8 +323,19 @@ prose -- so the budget is enforced by measuring each chunk with the real tokeniz
 character count.
 
 So the budget is **110 tokens of content** (≈432 characters of French here), measured with the model's own
-tokenizer and asserted in the test suite. Chunks are assembled at natural boundaries — paragraph, line,
-sentence, then whitespace — with a ~20-token overlap carried as whole trailing sentences.
+tokenizer. Chunks are assembled at natural boundaries — paragraph, line, sentence, then whitespace — with a
+~20-token overlap carried as whole trailing sentences.
+
+The budget is enforced as a **post-condition**: every chunk is re-measured before it becomes a record, and
+the overlap is carried _within_ the budget rather than added on top of it. That distinction is the whole
+game — adding the carry on top is the easy mistake, and it silently reintroduces exactly the truncation this
+section exists to prevent. 128 minus the two special tokens leaves **126** tokens of real capacity, so the
+110-token budget is deliberate headroom rather than slack to spend.
+
+Nothing is discarded along the way. What is conserved is the text between separators rather than the bytes:
+the splitter consumes the separator it splits on and the merge rejoins on a single space, so runs of
+whitespace are normalised. The tests assert word-level conservation for that reason, rather than claiming
+more than holds.
 
 I did not raise `max_seq_length` to 256. It is mechanically possible, since the backbone has 512 positions,
 but the model was distilled and trained at 128, so longer inputs are out of distribution. That is worth an
@@ -356,9 +384,18 @@ a portable one does not exist — which is why ingestion and serving are separat
 ### Consistency is asserted, not assumed
 
 FAISS stores only vectors and row ids, so chunk metadata lives in a JSONL sidecar whose line order _is_ the
-index row order. That invariant is checked on write and again on load; a mismatch raises rather than
-returning confident, wrong provenance. The manifest records the model, dimension, metric and normalisation,
-and the API refuses to serve an index whose dimension disagrees with the loaded model.
+index row order. Row count and dimension agreeing proves only that the shapes match — two unrelated
+snapshots of the same corpus size agree on both — so the manifest records a **sha256 of the index and of the
+sidecar**, computed over the staged bytes before publication and verified on every load. Sidecar line order
+is checked against index row position, and the metric is confirmed to be inner product so the scores really
+are the cosine similarities this API promises. Any mismatch raises rather than returning confident, wrong
+provenance, and the API turns it into a 503 that names the command to fix it.
+
+The manifest also records the model, dimension, metric and normalisation, and it is the manifest — not the
+environment — that decides which model may serve the index. An override naming a different model is refused
+at startup rather than honoured, because two models can share an embedding width: the dimension check would
+pass while every query vector landed in a different space from the documents, and every score would look
+plausible.
 
 ### No LangChain
 
@@ -389,7 +426,7 @@ Run through the Docker commands above, on the seven PDFs provided with the exerc
 
 | Documents | Pages | Pages with text | Pages with no text | Chunks | Characters | Ingestion |
 | --------- | ----- | --------------- | ------------------ | ------ | ---------- | --------- |
-| 7         | 64    | 62              | 2                  | 386    | 136,561    | 10.6 s    |
+| 7         | 64    | 62              | 2                  | 387    | 136,580    | 8.7 s     |
 
 Two observations from that run, both matching the limitations described below:
 
@@ -401,17 +438,26 @@ Two observations from that run, both matching the limitations described below:
 - **No chunk was truncated.** Measured against the model's own tokenizer, the longest chunk is 112 tokens
   including the two special tokens, against a 128-token encoder window — so every indexed vector represents
   the whole of the text returned to the caller. That is the property the token-based sizing exists to
-  guarantee, and on this corpus it holds for all 386 chunks.
+  guarantee, and on this corpus it holds for all 387 chunks.
 
-Page provenance was checked rather than assumed: every one of the 386 chunks was matched back to the page it
-claims, by re-extracting each source PDF and confirming the chunk text occurs on that page. 386 of 386.
+Page provenance was checked rather than assumed: every one of the 387 chunks was matched back to the page it
+claims, by re-extracting each source PDF and confirming the chunk text occurs on that page. 387 of 387.
+
+- **One passage was being silently dropped, and now is not.** Chunks below a minimum length used to be
+  discarded whenever a page produced more than one. On this corpus that cost exactly one chunk —
+  `"Jean-Pierre GALUDEC"`, a signatory on page 2 of the signed table of resolutions. A name is short, not
+  unimportant, and for a tool whose product is provenance, a passage the corpus contains but the index does
+  not is the wrong kind of bug to leave in. Runts are now folded into the preceding chunk where the budget
+  allows and kept standalone otherwise. The corpus went from 386 chunks to 387; nothing that was indexed
+  before was lost.
 
 ### Assumptions
 
 - Documents are **text-native**. There is no OCR, so a scanned page contributes nothing.
 - Documents are predominantly **French**; the model is multilingual but chunk sizing was measured on French.
 - The corpus is small enough that a **full rebuild** is the right update strategy.
-- The **same model** embeds documents and queries — enforced by the manifest check.
+- The **same model** embeds documents and queries. The manifest records it and startup refuses a model
+  that disagrees, so this is enforced rather than assumed.
 - Page numbers are those reported by the extractor, **1-based**, matching what a reader sees.
 - A single writer and a single reader; there is no concurrent index lifecycle.
 
@@ -435,6 +481,20 @@ claims, by re-extracting each source PDF and confirming the chunk text occurs on
 - **Exact identifiers and proper nouns.** Dense retrieval is weakest precisely where this corpus is
   distinctive: surnames, commune names, acronyms, and legal citations of the `L. 2121-29` form. A lexical
   (BM25) lane wins on rare tokens. This is the first thing I would add — see below.
+
+  This is not hypothetical, so here it is measured. Querying `convention de mécénat financier` — the exact
+  title of a document in the corpus — returns that document **third**:
+
+  1. **0.624** — `Ordre_du_jour_18-06-2026.pdf` p.1, _"Compte financier unique 2025 du budget annexe …"_
+  2. **0.554** — `d132664843659300_5271.pdf` p.6, a budget table of credits and subsidies
+  3. **0.533** — `159687_…convention_de_mecenat…pdf` p.1, **_"CONVENTION DE MÉCÉNAT FINANCIER …"_**
+
+  Two passages that merely share the register of municipal finance outrank an exact title match. Mean-pooled
+  multilingual embeddings encode topic, not tokens, and "mécénat" carries little weight against the general
+  financial vocabulary surrounding it. A BM25 lane fused with this one would put the titled document first
+  on term rarity alone. That is the argument for hybrid retrieval, and it is one example rather than a
+  benchmark — see [What I would improve with more time](#what-i-would-improve-with-more-time).
+
 - **Scanned documents.** Nothing to retrieve.
 - **Tabular documents.** A chunk from a linearised table is often meaningless in isolation.
 - **Heterogeneous corpora.** If the corpus mixes genres — say, official records and a vendor brochure — a
@@ -542,10 +602,13 @@ mine to publish; the index is a build artefact.
 PYTHONPATH=src pytest
 ```
 
-Around 50 tests, running in seconds with **no network access and no model download** — the embedder and the
-token counter are both injected. They cover the token budget, page attribution, chunk-index stability, the
-French text normalisation cases, score orientation and range, the `top_k`-larger-than-corpus path, the
-index/metadata consistency guards, and the API contract and failure modes.
+62 tests, running in under three seconds with **no network access and no model download** — the embedder and
+the token counter are both injected, and the API fixtures replace the startup builder before the application
+starts rather than after, so no test touches a real model or a real index directory. They cover the token
+budget including the overlap case that used to breach it, word-level text conservation, page attribution,
+chunk-index stability, the French text normalisation cases, score orientation and range, the
+`top_k`-larger-than-corpus path, the snapshot binding guards (reordered sidecar, swapped index, missing
+digest), the refusal of a model that disagrees with the manifest, and the API contract and failure modes.
 
 The real tokenizer is exercised once, manually, during an ingestion smoke run — deliberately, so the suite
 stays fast and offline.
