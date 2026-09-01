@@ -15,8 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from pdf_search import storage
-from pdf_search.chunking import CHUNK_TOKEN_BUDGET, chunk_page
-from pdf_search.embeddings import DEFAULT_MODEL_NAME, Embedder
+from pdf_search.chunking import chunk_page
+from pdf_search.embeddings import DEFAULT_MODEL_NAME, Embedder, budget_for
 from pdf_search.pdf_text import discover_pdfs, extract_pages
 from pdf_search.schemas import ChunkRecord, Manifest, PageRecord
 
@@ -43,10 +43,17 @@ def build_argument_parser() -> argparse.ArgumentParser:
 
 
 def collect_chunks(pages: list[PageRecord], embedder: Embedder) -> list[ChunkRecord]:
-    """Chunk every extracted page, numbering chunks contiguously across the corpus."""
+    """Chunk every extracted page, numbering chunks contiguously across the corpus.
+
+    The budget comes from the model rather than from a constant, so a model with
+    a wider window produces correspondingly larger chunks without a code change.
+    """
+    budget = budget_for(embedder.max_seq_length)
     chunks: list[ChunkRecord] = []
     for page in pages:
-        chunks.extend(chunk_page(page, embedder.count_tokens, start_index=len(chunks)))
+        chunks.extend(
+            chunk_page(page, embedder.count_tokens, start_index=len(chunks), budget=budget)
+        )
     return chunks
 
 
@@ -69,13 +76,15 @@ def run_ingestion(input_dir: Path, output_dir: Path, embedder: Embedder) -> Mani
             "The PDFs may be scanned images, which need OCR."
         )
 
-    vectors = embedder.encode([chunk.text for chunk in chunks])
+    vectors = embedder.encode_documents([chunk.text for chunk in chunks])
     index = storage.build_index(vectors, embedder.dim)
 
     manifest = Manifest(
         model_name=embedder.name,
         embedding_dim=embedder.dim,
-        chunk_token_budget=CHUNK_TOKEN_BUDGET,
+        query_prefix=embedder.prefixes.query,
+        document_prefix=embedder.prefixes.document,
+        chunk_token_budget=budget_for(embedder.max_seq_length),
         n_documents=len(pdf_paths),
         n_chunks=len(chunks),
         n_pages=len(pages),

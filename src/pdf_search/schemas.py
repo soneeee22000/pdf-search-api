@@ -44,6 +44,13 @@ class Manifest(BaseModel):
     embedding_dim: int = Field(gt=0)
     metric: Literal["ip"] = "ip"
     normalized: bool = True
+    # The prefixes the passages were encoded with. Recorded because a query
+    # encoded under a different scheme lands in a different region of the space
+    # than the documents it is searching, and every score still looks plausible.
+    # Defaults are empty so a snapshot written before this field existed loads
+    # as what it actually was: an index built without prefixes.
+    query_prefix: str = ""
+    document_prefix: str = ""
     # Derived at save time, so they cannot be supplied by the caller. Absent
     # means unverifiable, which `storage.load` treats as a refusal rather than
     # as permission to serve.

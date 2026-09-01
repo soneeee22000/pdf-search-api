@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from pdf_search import api, storage
 from pdf_search.api import SearchService, app
+from pdf_search.embeddings import PrefixScheme
 from pdf_search.schemas import ChunkRecord, Manifest
 from pdf_search.storage import IndexUnavailableError
 
@@ -30,7 +31,7 @@ def _service(tmp_path: Path, fake_embedder) -> SearchService:
         )
         for i, text in enumerate(TEXTS)
     ]
-    vectors = fake_embedder.encode([c.text for c in chunks])
+    vectors = fake_embedder.encode_documents([c.text for c in chunks])
     index = storage.build_index(vectors, fake_embedder.dim)
     manifest = Manifest(
         model_name=fake_embedder.name,
@@ -166,3 +167,46 @@ def test_a_model_disagreeing_with_the_manifest_is_refused(
 
     with pytest.raises(IndexUnavailableError, match="different vector space"):
         api._build_service()
+
+
+def test_an_index_whose_prefix_scheme_has_drifted_is_refused() -> None:
+    """A retrieval model's prefix is part of its vector space, not decoration.
+
+    If the passages were encoded as "passage: ..." and the queries stop being
+    encoded as "query: ...", the two no longer occupy the same region of the
+    space -- and, like every other mismatch here, it is silent: scores stay in
+    range, stay ordered, and stay wrong.
+    """
+    manifest = _manifest_with_prefixes(query="query: ", document="passage: ")
+
+    with pytest.raises(IndexUnavailableError, match="vector space"):
+        api._verify_prefixes(manifest, PrefixScheme())
+
+
+def test_an_index_whose_prefix_scheme_still_agrees_is_served() -> None:
+    """The check must not fire on the case it exists to permit."""
+    manifest = _manifest_with_prefixes(query="query: ", document="passage: ")
+
+    api._verify_prefixes(manifest, PrefixScheme(query="query: ", document="passage: "))
+
+
+def test_the_incumbent_records_an_empty_scheme_and_is_served() -> None:
+    """The shipped model uses no prefixes, so this refactor is a no-op for it."""
+    api._verify_prefixes(_manifest_with_prefixes(query="", document=""), PrefixScheme())
+
+
+def _manifest_with_prefixes(query: str, document: str) -> Manifest:
+    """A manifest that differs from the default only in its prefix scheme."""
+    return Manifest(
+        model_name="intfloat/multilingual-e5-small",
+        embedding_dim=384,
+        query_prefix=query,
+        document_prefix=document,
+        chunk_token_budget=494,
+        n_documents=1,
+        n_chunks=1,
+        n_pages=1,
+        n_pages_no_text=0,
+        created_at="2026-09-02T09:00:00+00:00",
+        source_documents=["doc-a.pdf"],
+    )

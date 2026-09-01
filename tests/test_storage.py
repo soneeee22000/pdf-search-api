@@ -49,7 +49,7 @@ def _manifest(dim: int, n_chunks: int) -> Manifest:
 def _save(tmp_path: Path, fake_embedder) -> Path:
     """Build and persist a snapshot; return its directory."""
     chunks = _chunks()
-    vectors = fake_embedder.encode([c.text for c in chunks])
+    vectors = fake_embedder.encode_documents([c.text for c in chunks])
     index = storage.build_index(vectors, fake_embedder.dim)
     out = tmp_path / "storage"
     storage.save(out, index, chunks, _manifest(fake_embedder.dim, len(chunks)))
@@ -70,7 +70,7 @@ def test_exact_match_scores_highest_and_results_are_descending(
 ) -> None:
     """Higher score means more similar, matching the documented contract."""
     loaded = storage.load(_save(tmp_path, fake_embedder))
-    query_vector = fake_embedder.encode([TEXTS[1]])
+    query_vector = fake_embedder.encode_query(TEXTS[1])
 
     results = loaded.search(query_vector, top_k=3)
 
@@ -82,7 +82,7 @@ def test_exact_match_scores_highest_and_results_are_descending(
 def test_scores_stay_inside_the_cosine_range(tmp_path: Path, fake_embedder) -> None:
     """Normalised vectors plus inner product give a cosine in [-1, 1]."""
     loaded = storage.load(_save(tmp_path, fake_embedder))
-    results = loaded.search(fake_embedder.encode(["une requete quelconque"]), top_k=3)
+    results = loaded.search(fake_embedder.encode_query("une requete quelconque"), top_k=3)
 
     assert all(-1.0 <= r.score <= 1.0 for r in results)
 
@@ -93,7 +93,7 @@ def test_top_k_larger_than_the_corpus_returns_everything_without_crashing(
     """FAISS pads short result rows with -1; those slots must be skipped."""
     loaded = storage.load(_save(tmp_path, fake_embedder))
 
-    results = loaded.search(fake_embedder.encode(["convention"]), top_k=20)
+    results = loaded.search(fake_embedder.encode_query("convention"), top_k=20)
 
     assert len(results) == 3
 
@@ -133,7 +133,7 @@ def test_save_refuses_a_vector_count_that_disagrees_with_the_chunks(
 ) -> None:
     """The alignment invariant is enforced on write as well as on read."""
     chunks = _chunks()
-    vectors = fake_embedder.encode([c.text for c in chunks[:2]])
+    vectors = fake_embedder.encode_documents([c.text for c in chunks[:2]])
     index = storage.build_index(vectors, fake_embedder.dim)
 
     with pytest.raises(ValueError, match="chunks"):
@@ -150,7 +150,7 @@ def test_save_works_when_the_output_directory_parent_is_not_writable(
     is exactly what the first real container run hit.
     """
     chunks = _chunks()
-    vectors = fake_embedder.encode([c.text for c in chunks])
+    vectors = fake_embedder.encode_documents([c.text for c in chunks])
     index = storage.build_index(vectors, fake_embedder.dim)
     out = tmp_path / "mounted"
     out.mkdir()
@@ -203,7 +203,7 @@ def test_an_index_swapped_for_another_of_the_same_shape_is_refused(
     """Matching row count and dimension are not evidence of matching content."""
     out = _save(tmp_path, fake_embedder)
     other = storage.build_index(
-        fake_embedder.encode(["texte sans rapport"] * len(TEXTS)), fake_embedder.dim
+        fake_embedder.encode_documents(["texte sans rapport"] * len(TEXTS)), fake_embedder.dim
     )
     import faiss
 

@@ -16,7 +16,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 
 from pdf_search import storage
-from pdf_search.embeddings import DEFAULT_MODEL_NAME, Embedder
+from pdf_search.embeddings import DEFAULT_MODEL_NAME, Embedder, PrefixScheme
 from pdf_search.schemas import HealthResponse, Manifest, SearchRequest, SearchResponse
 from pdf_search.storage import IndexUnavailableError, LoadedIndex
 
@@ -46,7 +46,7 @@ class SearchService:
 
     def search(self, query: str, top_k: int) -> SearchResponse:
         """Embed the query and return the most similar chunks."""
-        query_vector = self._embedder.encode([query])
+        query_vector = self._embedder.encode_query(query)
         results = self._loaded.search(query_vector, top_k)
         return SearchResponse(query=query, results=results)
 
@@ -90,7 +90,28 @@ def _build_service() -> SearchService:
             f"model {model_name} produces {embedder.dim}-d vectors but the index was built "
             f"with {loaded.manifest.embedding_dim}-d vectors. Rebuild the index with this model."
         )
+    _verify_prefixes(loaded.manifest, embedder.prefixes)
     return SearchService(loaded, embedder)
+
+
+def _verify_prefixes(manifest: Manifest, prefixes: PrefixScheme) -> None:
+    """Refuse to query an index whose passages were prefixed differently.
+
+    Retrieval models are asymmetric, and the prefix is part of the vector space,
+    not decoration. If the scheme in use has drifted from the one the passages
+    were encoded under -- a corrected model card, an edited registry, an older
+    snapshot -- then queries land somewhere the documents are not. Like every
+    other mismatch here it is silent: the scores stay in range and stay ordered.
+    """
+    recorded = PrefixScheme(query=manifest.query_prefix, document=manifest.document_prefix)
+    if recorded == prefixes:
+        return
+    raise IndexUnavailableError(
+        f"this index was built with query prefix {recorded.query!r} and document prefix "
+        f"{recorded.document!r}, but {manifest.model_name} now encodes with {prefixes.query!r} "
+        f"and {prefixes.document!r}. Queries would not share a vector space with the "
+        "documents. Re-run ingestion to rebuild the index under the current scheme."
+    )
 
 
 @asynccontextmanager

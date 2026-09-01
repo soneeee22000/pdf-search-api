@@ -20,14 +20,13 @@ from pdf_search.schemas import ChunkRecord, PageRecord
 
 TokenCounter = Callable[[str], int]
 
+# The default, and what the incumbent model earns. Ingestion does not use it:
+# it derives the budget from the loaded model via `embeddings.budget_for`, so a
+# model with a wider window produces larger chunks without a code change. The
+# two are pinned to each other by a test.
 CHUNK_TOKEN_BUDGET = 110
 CHUNK_TOKEN_OVERLAP = 20
 MIN_CHUNK_CHARS = 40
-
-# `max_seq_length` is 128 and *includes* the two special tokens the tokenizer
-# adds, so 126 is the real capacity for content. The budget above is what the
-# chunker enforces; the gap is deliberate headroom, not slack to spend.
-MODEL_TOKEN_CAPACITY = 126
 
 # Tried in order: paragraph, line, sentence, then whitespace. The first
 # separator that actually splits an oversized span is used.
