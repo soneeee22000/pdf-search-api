@@ -24,13 +24,21 @@ MAX_MODEL_BYTES = 1.5 * 1024**3
 BYTES_PER_MB = 1024 * 1024
 
 
-def load_results(directory: Path) -> list[dict[str, Any]]:
-    """Read every non-smoke result, incumbent first."""
-    results = [
-        json.loads(path.read_text(encoding="utf-8"))
-        for path in sorted(directory.glob("*.json"))
-        if "--smoke" not in path.name
-    ]
+def load_results(directory: Path, ablation: bool = False) -> list[dict[str, Any]]:
+    """Read results, incumbent first.
+
+    Runs with a forced budget are the ablation, not the sweep. They answer a
+    different question -- what a model does at a fixed chunk size -- and folding
+    them into the decision table would enter the same model twice under two
+    configurations.
+    """
+    results = []
+    for path in sorted(directory.glob("*.json")):
+        if "--smoke" in path.name:
+            continue
+        if ("--budget" in path.name) != ablation:
+            continue
+        results.append(json.loads(path.read_text(encoding="utf-8")))
     return sorted(results, key=lambda r: r["model_name"] != INCUMBENT)
 
 
@@ -133,10 +141,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"no results in {args.results_dir}")
         return 1
 
-    print("## Retrieval quality\n")
+    print("## Retrieval quality, each model at the budget its own window earns\n")
     print(quality_table(results))
     print("\n## Cost\n")
     print(cost_table(results))
+
+    ablation = load_results(args.results_dir, ablation=True)
+    if ablation:
+        incumbent = [r for r in results if r["model_name"] == INCUMBENT]
+        print("\n## Ablation: the same models held at the incumbent chunk budget\n")
+        print("A candidate does not only embed differently, it also re-chunks the")
+        print("corpus, so model and chunk size are confounded in the table above.")
+        print("Holding the budget at 110 leaves the model as the only variable.\n")
+        print(quality_table(incumbent + ablation))
 
     verdict, reasoning = apply_decision_rule(results)
     print("\n## Decision\n")
