@@ -1,7 +1,7 @@
-# The PDFs were provided by Datapolitics. They are not ours to publish.
-# Neither is the brief itself: publishing it would put their hiring material
-# in a public repository.
-sample-pdfs/
+# The brief itself stays out: publishing it would put Datapolitics' hiring
+# material in a public repository. The seven PDFs are published -- they are
+# public municipal records, and shipping them makes the ingestion run
+# reproducible by anyone reading this.
 CHALLENGE.md
 storage/
 storage.staging/

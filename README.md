@@ -282,9 +282,11 @@ one implementation is cost without benefit.
 
 ## The corpus
 
-The seven PDFs supplied with the exercise are not in this repository — they belong to Datapolitics and
-are not mine to publish. They are described here because the design decisions below were made against
-these specific documents, not against a hypothetical corpus.
+The seven PDFs supplied with the exercise are in [`sample-pdfs/`](sample-pdfs/), so every number below is
+reproducible: clone, run the ingestion command, and you should get the same 387 chunks. They are public
+municipal records — deliberations, an agenda, a roadworks order, a draft sponsorship contract. They are
+described here because the design decisions below were made against these specific documents rather than
+against a hypothetical corpus.
 
 | Document                                 | Share                           | What it is                                             | What it breaks                                                                                |
 | ---------------------------------------- | ------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
@@ -724,8 +726,8 @@ pdf-search-api/
 └── storage/             # generated: index.faiss · metadata.jsonl · manifest.json
 ```
 
-`sample-pdfs/` and `storage/` are git-ignored. The PDFs were provided by Datapolitics and are not
-mine to publish; the index is a build artefact.
+`storage/` is git-ignored — the index is a build artefact, rebuilt by the ingestion command in seconds.
+`sample-pdfs/` is committed so the run is reproducible.
 
 ---
 
