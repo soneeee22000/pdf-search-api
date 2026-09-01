@@ -7,9 +7,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from pdf_search import storage
+from pdf_search import api, storage
 from pdf_search.api import SearchService, app
 from pdf_search.schemas import ChunkRecord, Manifest
+from pdf_search.storage import IndexUnavailableError
 
 TEXTS = [
     "Le conseil municipal approuve la convention de mecenat financier.",
@@ -48,26 +49,34 @@ def _service(tmp_path: Path, fake_embedder) -> SearchService:
 
 
 @pytest.fixture
-def client(tmp_path: Path, fake_embedder):
-    """A TestClient whose service is injected, bypassing model loading."""
+def client(tmp_path: Path, fake_embedder, monkeypatch):
+    """A TestClient whose startup builds the fake service instead of a real one.
+
+    Patched *before* the context manager, because that is what runs the
+    lifespan: injecting afterwards left the real model and the real storage
+    directory to be loaded first, which made the suite slow and dependent on
+    whatever happened to be on disk.
+    """
     service = _service(tmp_path, fake_embedder)
+    monkeypatch.setattr(api, "_build_service", lambda: service)
     with TestClient(app) as test_client:
-        # Set after startup: the lifespan resets state and tries a real load.
-        test_client.app.state.service = service
-        test_client.app.state.startup_error = None
         yield test_client
-    app.state.service = None
-    app.state.startup_error = None
 
 
 @pytest.fixture
-def unavailable_client():
-    """A TestClient with no index loaded."""
+def unavailable_client(monkeypatch):
+    """A TestClient whose startup fails to find an index.
+
+    This drives the real failure path in the lifespan rather than simulating
+    its result, so the error handling itself is covered.
+    """
+
+    def _fail() -> SearchService:
+        raise IndexUnavailableError("missing index.faiss. Run python -m pdf_search.ingest")
+
+    monkeypatch.setattr(api, "_build_service", _fail)
     with TestClient(app) as test_client:
-        test_client.app.state.service = None
-        test_client.app.state.startup_error = "missing index.faiss. Run python -m pdf_search.ingest"
         yield test_client
-    app.state.service = None
 
 
 def test_search_returns_the_five_specified_fields(client) -> None:
