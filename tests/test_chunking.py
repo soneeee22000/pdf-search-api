@@ -76,3 +76,22 @@ def test_paragraph_boundaries_are_preferred_over_mid_sentence_cuts(count_tokens)
 
     assert len(chunks) >= 2
     assert not any("alpha" in c.text and "beta" in c.text for c in chunks)
+
+
+def test_carried_overlap_cannot_push_a_chunk_over_the_budget(count_tokens) -> None:
+    """The overlap is carried within the budget, never added on top of it.
+
+    Regression: a paragraph split preserves its internal sentence punctuation,
+    so the carry is non-empty and used to be prepended to a fresh full-size
+    span without re-checking. The result was a chunk of budget + overlap tokens
+    that the model would silently truncate -- the exact failure this module
+    exists to prevent.
+    """
+    tail = " ".join(f"fin{i}" for i in range(10))
+    para_a = " ".join(f"mot{i}" for i in range(95)) + ". " + tail
+    para_b = " ".join(f"autre{i}" for i in range(105))
+
+    chunks = chunk_page(_page(f"{para_a}\n\n{para_b}"), count_tokens, budget=110, overlap=20)
+
+    assert chunks
+    assert max(count_tokens(chunk.text) for chunk in chunks) <= 110

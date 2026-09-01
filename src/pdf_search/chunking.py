@@ -24,6 +24,11 @@ CHUNK_TOKEN_BUDGET = 110
 CHUNK_TOKEN_OVERLAP = 20
 MIN_CHUNK_CHARS = 40
 
+# `max_seq_length` is 128 and *includes* the two special tokens the tokenizer
+# adds, so 126 is the real capacity for content. The budget above is what the
+# chunker enforces; the gap is deliberate headroom, not slack to spend.
+MODEL_TOKEN_CAPACITY = 126
+
 # Tried in order: paragraph, line, sentence, then whitespace. The first
 # separator that actually splits an oversized span is used.
 _SEPARATORS = ("\n\n", "\n", ". ", " ")
@@ -48,9 +53,10 @@ def chunk_page(
 
     pieces = _split_to_budget(page.text, count_tokens, budget)
     merged = _merge_with_overlap(pieces, count_tokens, budget, overlap)
+    sized = _enforce_budget(merged, count_tokens, budget)
 
     records: list[ChunkRecord] = []
-    for offset, text in enumerate(merged):
+    for offset, text in enumerate(sized):
         records.append(
             ChunkRecord(
                 document_name=page.document_name,
@@ -106,8 +112,12 @@ def _merge_with_overlap(
         candidate = f"{current} {span}".strip() if current else span
         if current and count_tokens(candidate) > budget:
             chunks.append(current)
-            current = _carry_overlap(current, count_tokens, overlap)
-            current = f"{current} {span}".strip() if current else span
+            carried = _carry_overlap(current, count_tokens, overlap)
+            current = f"{carried} {span}".strip() if carried else span
+            if count_tokens(current) > budget:
+                # Context is worth carrying, but not at the cost of the budget
+                # it was carried into: the model would truncate it away anyway.
+                current = span
         else:
             current = candidate
 
@@ -115,6 +125,32 @@ def _merge_with_overlap(
         chunks.append(current.strip())
 
     return [c for c in chunks if len(c) >= MIN_CHUNK_CHARS or len(chunks) == 1]
+
+
+def _enforce_budget(texts: Iterable[str], count_tokens: TokenCounter, budget: int) -> list[str]:
+    """Post-condition: nothing leaves this module over budget.
+
+    Both `_hard_split` and the overlap merge work from estimates, so the budget
+    is re-checked here against the real counter rather than trusted. A single
+    word longer than the budget is emitted alone -- without the tokenizer
+    itself there is no smaller unit to cut on.
+    """
+    sized: list[str] = []
+    for text in texts:
+        if count_tokens(text) <= budget:
+            sized.append(text)
+            continue
+        current = ""
+        for word in text.split():
+            candidate = f"{current} {word}".strip() if current else word
+            if current and count_tokens(candidate) > budget:
+                sized.append(current)
+                current = word
+            else:
+                current = candidate
+        if current:
+            sized.append(current)
+    return sized
 
 
 def _carry_overlap(text: str, count_tokens: TokenCounter, overlap: int) -> str:
