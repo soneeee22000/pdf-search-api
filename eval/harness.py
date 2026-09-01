@@ -122,7 +122,9 @@ def _smoke_corpus(input_dir: Path, work_dir: Path) -> Path:
     return target
 
 
-def evaluate(model_name: str, input_dir: Path, queries: list[EvalQuery], work_dir: Path) -> dict:
+def evaluate(
+    model_name: str, input_dir: Path, queries: list[EvalQuery], work_dir: Path
+) -> dict[str, Any]:
     """Ingest the corpus under one model, then score every query against it."""
     embedder = SentenceTransformerEmbedder(model_name)
     snapshot = work_dir / "storage"

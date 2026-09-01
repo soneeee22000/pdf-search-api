@@ -108,6 +108,27 @@ sqrt(0.7 x 0.3 / 25) ≈ 0.09, or roughly 2.3 queries. A margin of one or two
 queries is inside the sampling noise of a set this size. This set cannot resolve
 differences finer than that, and no result below is reported as if it could.
 
+## Amendment, 2026-09-02, before any evaluation was run
+
+`ibm-granite/granite-embedding-97m-multilingual-r2` is **withdrawn from the
+candidate list**. It does not load:
+
+    ValueError: The checkpoint you are trying to load has model type `modernbert`
+    but Transformers does not recognize this architecture.
+
+The exclusion is mechanical rather than a judgement about the model: it needs a
+newer `transformers` than this project pins, and raising a core dependency to
+admit one candidate is a larger change than the candidate is worth here. The
+dependency cost is itself the finding.
+
+This is recorded as an amendment rather than as an edit to the list above, and it
+is committed before any result exists. The remaining candidates are the
+incumbent, `multilingual-e5-small`, `multilingual-e5-base` and
+`Solon-embeddings-base-0.1`.
+
+Confirmed on load: e5-small is **384-d with a 512-token window**, e5-base is
+768-d/512, Solon-base is 768-d/512.
+
 ## What this evaluation is not
 
 - It is **not** a benchmark. It is one corpus, ~25 queries, and the phrasings are

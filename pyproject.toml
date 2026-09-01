@@ -47,10 +47,11 @@ extend-immutable-calls = ["fastapi.Depends"]
 [tool.mypy]
 python_version = "3.10"
 strict = true
-files = ["src"]
+files = ["src", "eval"]
+mypy_path = "src"
 
-# faiss, pypdfium2 and sentence-transformers ship no type information. Their
-# call sites are typed here; the libraries themselves cannot be.
+# faiss, pypdfium2, sentence-transformers and psutil ship no type information.
+# Their call sites are typed here; the libraries themselves cannot be.
 [[tool.mypy.overrides]]
-module = ["faiss.*", "pypdfium2.*", "sentence_transformers.*"]
+module = ["faiss.*", "pypdfium2.*", "sentence_transformers.*", "psutil.*"]
 ignore_missing_imports = true
