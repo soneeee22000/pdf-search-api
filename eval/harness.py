@@ -25,10 +25,20 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+from numpy.typing import NDArray
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from pdf_search import storage  # noqa: E402
-from pdf_search.embeddings import SentenceTransformerEmbedder, budget_for  # noqa: E402
+from pdf_search.embeddings import (  # noqa: E402
+    BUDGET_HEADROOM_TOKENS,
+    SPECIAL_TOKEN_ALLOWANCE,
+    Embedder,
+    PrefixScheme,
+    SentenceTransformerEmbedder,
+    budget_for,
+)
 from pdf_search.ingest import run_ingestion  # noqa: E402
 
 RECALL_AT = (1, 3, 5, 10)
@@ -122,11 +132,72 @@ def _smoke_corpus(input_dir: Path, work_dir: Path) -> Path:
     return target
 
 
+class _FixedBudgetEmbedder:
+    """Wraps an embedder so `budget_for` yields a chosen chunk budget.
+
+    Used only by the ablation. It reports the window that produces the requested
+    budget and delegates everything else, so the model itself is untouched --
+    which is the point: the chunk size becomes the controlled variable.
+
+    Delegation is written out rather than done through `__getattr__` so the type
+    checker can see that this still satisfies the `Embedder` protocol.
+    """
+
+    def __init__(self, inner: Embedder, budget: int) -> None:
+        """Record the wrapped embedder and the window to advertise."""
+        self._inner = inner
+        self._window = budget + SPECIAL_TOKEN_ALLOWANCE + BUDGET_HEADROOM_TOKENS
+
+    @property
+    def name(self) -> str:
+        """The wrapped model identifier."""
+        return self._inner.name
+
+    @property
+    def dim(self) -> int:
+        """The wrapped embedding dimension."""
+        return self._inner.dim
+
+    @property
+    def max_seq_length(self) -> int:
+        """The window that makes `budget_for` return the requested budget."""
+        return self._window
+
+    @property
+    def prefixes(self) -> PrefixScheme:
+        """The wrapped prefix scheme, unchanged."""
+        return self._inner.prefixes
+
+    def encode_documents(self, texts: list[str]) -> NDArray[np.float32]:
+        """Delegate unchanged."""
+        return self._inner.encode_documents(texts)
+
+    def encode_query(self, text: str) -> NDArray[np.float32]:
+        """Delegate unchanged."""
+        return self._inner.encode_query(text)
+
+    def count_tokens(self, text: str) -> int:
+        """Delegate unchanged: the real tokenizer still measures the chunks."""
+        return self._inner.count_tokens(text)
+
+
 def evaluate(
-    model_name: str, input_dir: Path, queries: list[EvalQuery], work_dir: Path
+    model_name: str,
+    input_dir: Path,
+    queries: list[EvalQuery],
+    work_dir: Path,
+    budget_override: int | None = None,
 ) -> dict[str, Any]:
-    """Ingest the corpus under one model, then score every query against it."""
-    embedder = SentenceTransformerEmbedder(model_name)
+    """Ingest the corpus under one model, then score every query against it.
+
+    `budget_override` exists for one purpose: giving two models the same chunk
+    size so the comparison isolates the model. By default each model gets the
+    budget its own window earns, which is the deployment-realistic setting but
+    confounds model with chunk size.
+    """
+    embedder: Embedder = SentenceTransformerEmbedder(model_name)
+    if budget_override is not None:
+        embedder = _FixedBudgetEmbedder(embedder, budget_override)
     snapshot = work_dir / "storage"
 
     started = time.monotonic()
@@ -199,6 +270,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--input-dir", type=Path, default=Path("sample-pdfs"))
     parser.add_argument("--out-dir", type=Path, default=Path("eval/results"))
     parser.add_argument(
+        "--budget",
+        type=int,
+        default=None,
+        help="force a chunk token budget, to isolate the model from the chunk size",
+    )
+    parser.add_argument(
         "--smoke",
         action="store_true",
         help="two documents, three queries: proves the path before the sweep",
@@ -217,11 +294,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.smoke:
             input_dir = _smoke_corpus(args.input_dir, work_dir)
             queries = queries[:SMOKE_QUERIES]
-        result = evaluate(args.model, input_dir, queries, work_dir)
+        result = evaluate(args.model, input_dir, queries, work_dir, args.budget)
 
     result["smoke"] = args.smoke
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    slug = args.model.replace("/", "__") + ("--smoke" if args.smoke else "")
+    suffix = "--smoke" if args.smoke else ""
+    if args.budget is not None:
+        suffix += f"--budget{args.budget}"
+    slug = args.model.replace("/", "__") + suffix
     out_path = args.out_dir / f"{slug}.json"
     out_path.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
 
