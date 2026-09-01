@@ -149,3 +149,20 @@ def test_health_without_an_index_reports_unavailable(unavailable_client) -> None
 
     assert body["status"] == "unavailable"
     assert body["n_chunks"] == 0
+
+
+def test_a_model_disagreeing_with_the_manifest_is_refused(
+    tmp_path: Path, fake_embedder, monkeypatch
+) -> None:
+    """Two models can share a dimension while embedding into different spaces.
+
+    Regression: the override was honoured whenever the dimension matched, so
+    queries were embedded by one model and compared against documents embedded
+    by another. Every score was meaningless and nothing reported a problem.
+    """
+    _service(tmp_path, fake_embedder)
+    monkeypatch.setenv(api.STORAGE_DIR_ENV, str(tmp_path / "storage"))
+    monkeypatch.setenv(api.MODEL_NAME_ENV, "another-model-of-the-same-width")
+
+    with pytest.raises(IndexUnavailableError, match="different vector space"):
+        api._build_service()

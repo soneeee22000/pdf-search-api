@@ -17,7 +17,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, status
 
 from pdf_search import storage
 from pdf_search.embeddings import DEFAULT_MODEL_NAME, Embedder
-from pdf_search.schemas import HealthResponse, SearchRequest, SearchResponse
+from pdf_search.schemas import HealthResponse, Manifest, SearchRequest, SearchResponse
 from pdf_search.storage import IndexUnavailableError, LoadedIndex
 
 logger = logging.getLogger(__name__)
@@ -56,12 +56,33 @@ def _storage_dir() -> Path:
     return Path(os.environ.get(STORAGE_DIR_ENV, "storage"))
 
 
+def _resolve_model_name(manifest: Manifest) -> str:
+    """The manifest decides which model may serve its index.
+
+    An override that disagrees is refused rather than honoured. Two different
+    models can share an embedding width, so the dimension check below would
+    pass while every query vector landed in a different space from the
+    documents -- scores would still look plausible and nothing would report a
+    problem. Checked before the model is constructed, so the refusal costs
+    nothing and does not depend on the wrong model being unavailable.
+    """
+    recorded = manifest.model_name or DEFAULT_MODEL_NAME
+    requested = os.environ.get(MODEL_NAME_ENV)
+    if requested and requested != recorded:
+        raise IndexUnavailableError(
+            f"{MODEL_NAME_ENV} is set to {requested} but this index was built with {recorded}. "
+            "Queries would be embedded into a different vector space from the documents. "
+            "Re-run ingestion with the model you want, or unset the variable."
+        )
+    return recorded
+
+
 def _build_service() -> SearchService:
     """Load the snapshot and the matching model. Raises IndexUnavailableError."""
     from pdf_search.embeddings import SentenceTransformerEmbedder
 
     loaded = storage.load(_storage_dir())
-    model_name = os.environ.get(MODEL_NAME_ENV, loaded.manifest.model_name or DEFAULT_MODEL_NAME)
+    model_name = _resolve_model_name(loaded.manifest)
     embedder = SentenceTransformerEmbedder(model_name)
 
     if embedder.dim != loaded.manifest.embedding_dim:
