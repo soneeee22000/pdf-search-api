@@ -1,10 +1,57 @@
 # PDF Search API
 
-Semantic search over a local corpus of French public-sector PDFs. Two parts: a command-line ingestion
-program that extracts, chunks, embeds and indexes the documents, and a FastAPI service that answers
-similarity queries with exact provenance — document, page, chunk and score.
+**Semantic search over a local corpus of French public-sector PDFs — every result traceable to its
+document and page.**
+
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.141-009688?logo=fastapi&logoColor=white)
+![FAISS](https://img.shields.io/badge/FAISS-1.15-0467DF)
+![sentence-transformers](https://img.shields.io/badge/embeddings-MiniLM--L12--v2-FFAA00)
+![Docker](https://img.shields.io/badge/Docker-CPU--only-2496ED?logo=docker&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
+
+Two parts: a command-line ingestion program that extracts, chunks, embeds and indexes the documents,
+and a FastAPI service that answers similarity queries with exact provenance — document, page, chunk
+and score.
 
 Everything runs locally on CPU. No paid APIs, no managed services, no network access at query time.
+
+---
+
+## What this does, in plain terms
+
+French communes are legally required to publish what they decide — _délibérations_, _procès-verbaux_,
+_arrêtés_, meeting agendas. They publish them as PDFs, one commune at a time, in no common format.
+The information is simultaneously public and unusable: to find the one paragraph that matters, somebody
+has to open every file and read it.
+
+This service removes the reading. Point the ingestion command at a folder of PDFs and it reads every
+page once, building a local search index. After that, an analyst asks a question in ordinary French —
+_"redevance de concession versée par GRDF"_ — and gets back the passages that answer it, ranked, each
+one carrying **the file it came from, the page number, and a similarity score**.
+
+The page number is the point. In public-affairs work a passage without its source is worthless: you
+cannot cite it, act on it, or defend it in a meeting. So a passage is never allowed to straddle two
+pages, which keeps the page number exact rather than estimated — open the PDF at that page and the
+text is there. That constraint costs some retrieval quality, and the reasoning is set out in
+[Design decisions](#design-decisions).
+
+On the seven documents supplied with this exercise — 64 pages of council minutes, a sponsorship
+contract, a roadworks order, an agenda and a signed table of resolutions — indexing takes about ten
+seconds on a laptop CPU, and queries return in milliseconds. There is no LLM anywhere in this system:
+it finds passages, it does not write answers, so it cannot invent one.
+
+---
+
+## Contents
+
+- [Quick start](#quick-start) · [Running without Docker](#running-without-docker)
+- [API](#api)
+- [Architecture](#architecture)
+- [The corpus](#the-corpus)
+- [Design decisions](#design-decisions)
+- [Solution Review](#solution-review) — assumptions, limitations, where it fails, what production needs
+- [Project structure](#project-structure) · [Tests](#tests) · [Licence](#licence)
 
 ---
 
@@ -132,24 +179,116 @@ index can answer nothing, and should not be advertised as ready to an orchestrat
 
 ---
 
-## How it works
+## Architecture
 
+Ingestion and serving are **separate commands** that share nothing but a directory on disk. Ingestion
+writes a snapshot; the API reads one. Neither imports the other. That is what makes a rebuild safe
+without an atomic directory swap — see [Full rebuild, no incremental path](#full-rebuild-no-incremental-path).
+
+### Ingestion — run once per corpus change
+
+```mermaid
+flowchart LR
+  A[PDF folder<br/>CLI argument] --> B[pypdfium2<br/>per-page extract]
+  B --> C{page status}
+  C -->|extracted| D["normalise<br/>NFKC · soft hyphen · de-hyphenate"]
+  C -->|no_text / error| R[counted and named<br/>never silently dropped]
+  D --> E[chunk within page<br/>110-token budget]
+  E --> F["SentenceTransformer<br/>normalize_embeddings=True"]
+  F --> G["IndexFlatIP · 384-d"]
+  E --> H["metadata.jsonl<br/>same row order"]
+  G --> I[["staging → validate → replace"]]
+  H --> I
+  R --> I
+  I --> J[("storage/<br/>index.faiss · metadata.jsonl · manifest.json")]
 ```
-PDFs ──▶ pypdfium2 per-page extract ──▶ NFKC + hyphen normalisation
-     ──▶ chunk within each page, 110-token budget
-     ──▶ embed (CPU, normalised)  ──▶ FAISS IndexFlatIP  ─┐
-                                       metadata.jsonl     ├──▶ storage/
-                                       manifest.json     ─┘
+
+A page that yields no text is **reported, not skipped**. A pipeline that quietly indexes nothing looks
+identical to one that succeeded, and that is the failure mode worth engineering against.
+
+### Query — the API loads once at startup
+
+```mermaid
+flowchart LR
+  S[("storage/")] -->|lifespan| L[index + metadata + model]
+  L --> V{manifest agrees?<br/>vector count matches metadata?<br/>model dim matches index?}
+  V -->|no| X[503 naming the<br/>ingest command that fixes it]
+  V -->|yes| Q["POST /search<br/>query · top_k 1..20"]
+  Q --> W[encode query<br/>L2-normalised]
+  W --> Y["index.search<br/>cosine, descending"]
+  Y --> Z["join row id → metadata<br/>skip empty FAISS slots"]
+  Z --> O["document_name · page_number<br/>chunk_index · score · text"]
 ```
+
+A failed load is **recorded, not raised**: the container starts and explains itself on `/health`
+rather than crash-looping, which is far easier to diagnose.
+
+### Modules and seams
+
+```mermaid
+flowchart TD
+  schemas["schemas.py<br/>data contracts"]
+  pdf_text[pdf_text.py] --> schemas
+  chunking[chunking.py] --> schemas
+  storage[storage.py] --> schemas
+  embeddings[embeddings.py]
+  ingest[ingest.py] --> pdf_text
+  ingest --> chunking
+  ingest --> storage
+  ingest --> embeddings
+  api[api.py] --> storage
+  api --> embeddings
+  api --> schemas
+  classDef seam stroke-dasharray: 5 5
+  class pdf_text,embeddings,storage seam
+```
+
+`schemas.py` is the leaf — everything depends on it and it depends on nothing, which is why the
+on-disk record format and the HTTP wire format cannot drift apart. Nothing imports `ingest.py` or
+`api.py`.
+
+The three dashed modules are the **deliberate seams**, placed only where a second implementation is
+genuinely plausible: an OCR extractor behind `pdf_text`, a fake embedder behind `embeddings` (which
+is what lets the whole test suite run with no model download), and sqlite-vec or Elasticsearch behind
+`storage`. `chunking.py` and `ingest.py` have no seam, because inventing an interface with exactly
+one implementation is cost without benefit.
 
 | Module          | Role                                                  |
 | --------------- | ----------------------------------------------------- |
-| `pdf_text.py`   | Per-page extraction and text normalisation            |
+| `schemas.py`    | Pydantic contracts shared by disk format and HTTP API |
+| `pdf_text.py`   | Per-page extraction and French text normalisation     |
 | `chunking.py`   | Page-local, token-budgeted splitting                  |
 | `embeddings.py` | `Embedder` protocol + sentence-transformers adapter   |
 | `storage.py`    | FAISS index, JSONL metadata sidecar, manifest, search |
 | `ingest.py`     | CLI orchestration                                     |
 | `api.py`        | FastAPI app, loads the index once at startup          |
+
+---
+
+## The corpus
+
+The seven PDFs supplied with the exercise are not in this repository — they belong to Datapolitics and
+are not mine to publish. They are described here because the design decisions below were made against
+these specific documents, not against a hypothetical corpus.
+
+| Document                                 | Share                           | What it is                                             | What it breaks                                                                                |
+| ---------------------------------------- | ------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| `d132664843659300_5271.pdf`              | **81.5 %** · 311 chunks · 47 pp | Municipal council minutes, Pluméliau-Bieuzy (Morbihan) | Dominates the corpus. Almost any topical query ranks it first on sheer mass                   |
+| `159687_…convention_de_mecenat…pdf`      | 8.8 % · 36 chunks · 7 pp        | Draft sponsorship contract, Béziers                    | Continuous legal prose — the easy case                                                        |
+| `d235546020071500_9622.pdf`              | 3.1 % · 12 chunks · 2 pp        | Roadworks order, Jouy-en-Josas                         | Dense with identifiers (`ARR2026-222`, GPS coordinates) that dense retrieval handles poorly   |
+| `Ordre_du_jour_18-06-2026.pdf`           | 2.4 % · 9 chunks · 2 pp         | Council agenda, Grand Annecy                           | Short list items carry little context; mean pooling pushes them toward the corpus average     |
+| `AW Solutions – Dématérialisation…pdf`   | 2.2 % · 9 chunks · 2 pp         | Public tender notice / sales deck                      | Multi-column, and off-topic relative to the rest — a topical query can surface it             |
+| `260520_TABLEAU_DELIBERATIONS_SIGNE.pdf` | 2.1 % · 9 chunks · 2 pp         | Signed table of resolutions, Pluherlin                 | Linearised table: the header row that gives every other row its meaning ends up far from them |
+| `AFF-2026.06.11-DP-…ACCORD.pdf`          | **0 %** · 0 chunks · 2 pp       | Stamped planning permission notice                     | **No text layer at all.** Scanned image. Ingested, counted, named — and contributes nothing   |
+
+So of seven documents ingested, **six are retrievable**. The seventh is the OCR case, and the
+ingestion summary names it explicitly rather than reporting a clean run over a document it silently
+dropped.
+
+Two properties of this corpus shape everything below: one document is four fifths of the text, and the
+documents are heterogeneous in genre — official records beside a vendor brochure. Both are realistic,
+and both hurt dense retrieval in ways described in
+[Where search quality will be poor](#where-search-quality-will-be-poor).
 
 ---
 
@@ -261,9 +400,10 @@ Run through the Docker commands above, on the seven PDFs provided with the exerc
 Two observations from that run, both matching the limitations described below:
 
 - **Both no-text pages belong to one document** — the stamped urbanisme _déclaration préalable_, which has no
-  text layer at all. Ingestion names it and warns that it contributed nothing to the index, rather than
-  reporting a clean run over a document it silently dropped. It is the OCR case, and it is why OCR routing is
-  the second item on the improvements list.
+  text layer at all, so **six of the seven documents are actually retrievable** (see
+  [The corpus](#the-corpus)). Ingestion names it and warns that it contributed nothing to the index, rather
+  than reporting a clean run over a document it silently dropped. It is the OCR case, and it is why OCR
+  routing is the second item on the improvements list.
 - **No chunk was truncated.** Measured against the model's own tokenizer, the longest chunk is 112 tokens
   including the two special tokens, against a 128-token encoder window — so every indexed vector represents
   the whole of the text returned to the caller. That is the property the token-based sizing exists to
@@ -377,6 +517,31 @@ one.
 
 ---
 
+## Project structure
+
+```
+pdf-search-api/
+├── src/pdf_search/
+│   ├── schemas.py       # Pydantic contracts — the leaf of the dependency graph
+│   ├── pdf_text.py      # pypdfium2 extraction + French normalisation
+│   ├── chunking.py      # page-local, token-budgeted splitting
+│   ├── embeddings.py    # Embedder protocol + sentence-transformers adapter
+│   ├── storage.py       # FAISS index, JSONL sidecar, manifest, search
+│   ├── ingest.py        # CLI entry point (pdf-search-ingest)
+│   └── api.py           # FastAPI app
+├── tests/
+│   ├── conftest.py      # FakeEmbedder + injected token counter — no model download
+│   └── fixtures/        # two synthetic PDFs, with the script that regenerates them
+├── Dockerfile           # single stage, CPU-only torch, model baked at build time
+├── docker-entrypoint.sh # ingest | api | anything else
+└── storage/             # generated: index.faiss · metadata.jsonl · manifest.json
+```
+
+`sample-pdfs/` and `storage/` are git-ignored. The PDFs were provided by Datapolitics and are not
+mine to publish; the index is a build artefact.
+
+---
+
 ## Tests
 
 ```bash
@@ -390,3 +555,17 @@ index/metadata consistency guards, and the API contract and failure modes.
 
 The real tokenizer is exercised once, manually, during an ingestion smoke run — deliberately, so the suite
 stays fast and offline.
+
+---
+
+## Licence
+
+[MIT](LICENSE). Note that the runtime dependencies were chosen to keep the whole stack permissively
+licensed — see [PDF extraction: pypdfium2](#pdf-extraction-pypdfium2), where that constraint decided
+the extractor.
+
+The seven source PDFs are **not** covered by this licence and are not included in this repository.
+
+## Author
+
+Pyae Sone Kyaw (Seon) — [github.com/soneeee22000](https://github.com/soneeee22000)
