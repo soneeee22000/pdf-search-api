@@ -189,18 +189,14 @@ without an atomic directory swap — see [Full rebuild, no incremental path](#fu
 
 ```mermaid
 flowchart TD
-  A[PDF folder<br/>CLI argument] --> B[pypdfium2<br/>per-page extract]
-  B --> C{page status}
-  C -->|extracted| D["normalise<br/>NFKC · soft hyphen · de-hyphenate"]
-  C -->|no_text / error| R[counted and named<br/>never silently dropped]
-  D --> E[chunk within page<br/>110-token budget]
-  E --> F["SentenceTransformer<br/>normalize_embeddings=True"]
-  F --> G["IndexFlatIP · 384-d"]
-  E --> H["metadata.jsonl<br/>same row order"]
-  G --> I[["staging → validate → replace"]]
-  H --> I
-  R --> I
-  I --> J[("storage/<br/>index.faiss · metadata.jsonl · manifest.json")]
+  A["PDF folder<br/>CLI argument"] --> B["Extract per page<br/>pypdfium2"]
+  B --> C{"Page has text?"}
+  C -->|no| R["Counted and named<br/>in the run summary"]
+  C -->|yes| D["Normalise, then chunk<br/>page-local · 110-token budget"]
+  D --> E["Embed on CPU<br/>L2-normalised"]
+  E --> F["index.faiss + metadata.jsonl<br/>one row each, same order"]
+  R --> F
+  F --> G[("storage/<br/>staged, validated, published")]
 ```
 
 A page that yields no text is **reported, not skipped**. A pipeline that quietly indexes nothing looks
@@ -210,14 +206,12 @@ identical to one that succeeded, and that is the failure mode worth engineering 
 
 ```mermaid
 flowchart TD
-  S[("storage/")] -->|lifespan| L[index + metadata + model]
-  L --> V{manifest agrees?<br/>vector count matches metadata?<br/>model dim matches index?}
-  V -->|no| X[503 naming the<br/>ingest command that fixes it]
+  S[("storage/")] -->|"loaded once at startup"| L["index + metadata + model"]
+  L --> V{"Manifest agrees<br/>with index and model?"}
+  V -->|no| X["503 naming the<br/>command that fixes it"]
   V -->|yes| Q["POST /search<br/>query · top_k 1..20"]
-  Q --> W[encode query<br/>L2-normalised]
-  W --> Y["index.search<br/>cosine, descending"]
-  Y --> Z["join row id → metadata<br/>skip empty FAISS slots"]
-  Z --> O["document_name · page_number<br/>chunk_index · score · text"]
+  Q --> W["Embed query, then search<br/>cosine, descending"]
+  W --> O["document · page · chunk<br/>score · text"]
 ```
 
 A failed load is **recorded, not raised**: the container starts and explains itself on `/health`
