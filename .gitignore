@@ -1,5 +1,8 @@
 # The PDFs were provided by Datapolitics. They are not ours to publish.
+# Neither is the brief itself: publishing it would put their hiring material
+# in a public repository.
 sample-pdfs/
+CHALLENGE.md
 storage/
 storage.staging/
 *.faiss
