@@ -13,7 +13,7 @@ the ordering implied by the API contract.
 
 from __future__ import annotations
 
-import json
+import hashlib
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +28,7 @@ METADATA_FILENAME = "metadata.jsonl"
 MANIFEST_FILENAME = "manifest.json"
 
 _FAISS_EMPTY_SLOT = -1
+_DIGEST_BLOCK_BYTES = 1 << 20
 
 
 class IndexUnavailableError(RuntimeError):
@@ -113,13 +114,69 @@ def save(
     with (staging / METADATA_FILENAME).open("w", encoding="utf-8") as handle:
         for chunk in chunks:
             handle.write(chunk.model_dump_json() + "\n")
-    (staging / MANIFEST_FILENAME).write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+    sealed = manifest.model_copy(
+        update={
+            "index_sha256": _digest(staging / INDEX_FILENAME),
+            "metadata_sha256": _digest(staging / METADATA_FILENAME),
+        }
+    )
+    (staging / MANIFEST_FILENAME).write_text(sealed.model_dump_json(indent=2), encoding="utf-8")
 
     _validate(staging)
 
     for filename in (INDEX_FILENAME, METADATA_FILENAME, MANIFEST_FILENAME):
         (staging / filename).replace(output_dir / filename)
     shutil.rmtree(staging)
+
+
+def _digest(path: Path) -> str:
+    """sha256 of a file, read in blocks so a large index is never held in memory."""
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(_DIGEST_BLOCK_BYTES), b""):
+            hasher.update(block)
+    return hasher.hexdigest()
+
+
+def _verify_binding(
+    directory: Path, index: faiss.Index, chunks: list[ChunkRecord], manifest: Manifest
+) -> None:
+    """Confirm these three files are the ones that were written together.
+
+    Row count and dimension agreeing proves only that the shapes match; two
+    unrelated snapshots of the same corpus size agree on both. The digests bind
+    the files to each other, and the row-position check enforces the sidecar
+    ordering this module's contract depends on.
+    """
+    if manifest.index_sha256 is None or manifest.metadata_sha256 is None:
+        raise IndexUnavailableError(
+            f"the manifest in {directory} carries no file digest, so the snapshot cannot be "
+            "verified. Rebuild the index."
+        )
+
+    expected = {
+        INDEX_FILENAME: manifest.index_sha256,
+        METADATA_FILENAME: manifest.metadata_sha256,
+    }
+    for filename, digest in expected.items():
+        if _digest(directory / filename) != digest:
+            raise IndexUnavailableError(
+                f"{filename} does not match the digest recorded in the manifest; the snapshot "
+                "has been modified or mixed with another. Rebuild the index."
+            )
+
+    for row, chunk in enumerate(chunks):
+        if chunk.chunk_index != row:
+            raise IndexUnavailableError(
+                f"metadata line {row} holds chunk_index {chunk.chunk_index}; sidecar order must "
+                "match index row order. Rebuild the index."
+            )
+
+    if index.metric_type != faiss.METRIC_INNER_PRODUCT:
+        raise IndexUnavailableError(
+            "the index was not built with the inner-product metric, so its scores are not the "
+            "cosine similarities the API contract promises. Rebuild the index."
+        )
 
 
 def _validate(directory: Path) -> None:
@@ -162,5 +219,7 @@ def load(directory: Path) -> LoadedIndex:
             f"index dimension {index.d} does not match manifest dimension "
             f"{manifest.embedding_dim}. Rebuild the index."
         )
+
+    _verify_binding(directory, index, chunks, manifest)
 
     return LoadedIndex(index=index, chunks=chunks, manifest=manifest)

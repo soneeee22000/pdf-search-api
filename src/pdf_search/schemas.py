@@ -44,6 +44,11 @@ class Manifest(BaseModel):
     embedding_dim: int = Field(gt=0)
     metric: Literal["ip"] = "ip"
     normalized: bool = True
+    # Derived at save time, so they cannot be supplied by the caller. Absent
+    # means unverifiable, which `storage.load` treats as a refusal rather than
+    # as permission to serve.
+    index_sha256: str | None = None
+    metadata_sha256: str | None = None
     chunk_token_budget: int = Field(gt=0)
     n_documents: int = Field(ge=0)
     n_chunks: int = Field(ge=0)

@@ -179,3 +179,46 @@ def test_staging_directory_is_cleaned_up(tmp_path: Path, fake_embedder) -> None:
         storage.MANIFEST_FILENAME,
         storage.METADATA_FILENAME,
     ]
+
+
+def test_reordered_metadata_is_refused(tmp_path: Path, fake_embedder) -> None:
+    """Line order in the sidecar *is* index row order; a reshuffle must not pass.
+
+    Regression: count and dimension both still matched, so a reordered sidecar
+    loaded cleanly and every result carried confident, wrong provenance -- the
+    worst possible failure for a tool whose product is traceability.
+    """
+    out = _save(tmp_path, fake_embedder)
+    metadata = out / storage.METADATA_FILENAME
+    lines = metadata.read_text(encoding="utf-8").splitlines()
+    metadata.write_text("\n".join(reversed(lines)) + "\n", encoding="utf-8")
+
+    with pytest.raises(IndexUnavailableError):
+        storage.load(out)
+
+
+def test_an_index_swapped_for_another_of_the_same_shape_is_refused(
+    tmp_path: Path, fake_embedder
+) -> None:
+    """Matching row count and dimension are not evidence of matching content."""
+    out = _save(tmp_path, fake_embedder)
+    other = storage.build_index(
+        fake_embedder.encode(["texte sans rapport"] * len(TEXTS)), fake_embedder.dim
+    )
+    import faiss
+
+    faiss.write_index(other, str(out / storage.INDEX_FILENAME))
+
+    with pytest.raises(IndexUnavailableError):
+        storage.load(out)
+
+
+def test_a_snapshot_without_digests_is_refused(tmp_path: Path, fake_embedder) -> None:
+    """An index written before the digests existed cannot be verified, so it is not served."""
+    out = _save(tmp_path, fake_embedder)
+    manifest_path = out / storage.MANIFEST_FILENAME
+    stale = _manifest(fake_embedder.dim, len(TEXTS))
+    manifest_path.write_text(stale.model_dump_json(indent=2), encoding="utf-8")
+
+    with pytest.raises(IndexUnavailableError, match="digest"):
+        storage.load(out)
