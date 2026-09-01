@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pypdfium2
 
-from pdf_search.schemas import PageRecord
+from pdf_search.schemas import PageRecord, PageStatus
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ def normalise(text: str) -> str:
     return text.strip()
 
 
-def _page_status(text: str) -> str:
+def _page_status(text: str) -> PageStatus:
     """Classify a page by whether it produced usable text."""
     return "extracted" if len(text.replace(" ", "")) >= MIN_USABLE_CHARS else "no_text"
 

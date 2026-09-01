@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncIterator
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 
@@ -113,7 +113,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def get_service(request: Request) -> SearchService:
     """Return the loaded service or raise an actionable 503."""
-    service = getattr(request.app.state, "service", None)
+    service: SearchService | None = getattr(request.app.state, "service", None)
     if service is None:
         detail = getattr(request.app.state, "startup_error", None) or "index not loaded"
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=detail)

@@ -20,6 +20,7 @@ from pathlib import Path
 
 import faiss
 import numpy as np
+from numpy.typing import NDArray
 
 from pdf_search.schemas import ChunkRecord, Manifest, SearchResult
 
@@ -43,7 +44,7 @@ class LoadedIndex:
     chunks: list[ChunkRecord]
     manifest: Manifest
 
-    def search(self, query_vector: np.ndarray, top_k: int) -> list[SearchResult]:
+    def search(self, query_vector: NDArray[np.float32], top_k: int) -> list[SearchResult]:
         """Return the top_k most similar chunks, most similar first."""
         if query_vector.ndim == 1:
             query_vector = query_vector.reshape(1, -1)
@@ -54,7 +55,7 @@ class LoadedIndex:
         scores, row_ids = self.index.search(np.ascontiguousarray(query_vector), wanted)
 
         results: list[SearchResult] = []
-        for score, row_id in zip(scores[0], row_ids[0]):
+        for score, row_id in zip(scores[0], row_ids[0], strict=True):
             if row_id == _FAISS_EMPTY_SLOT:
                 continue
             chunk = self.chunks[int(row_id)]
@@ -70,7 +71,7 @@ class LoadedIndex:
         return results
 
 
-def build_index(vectors: np.ndarray, dim: int) -> faiss.Index:
+def build_index(vectors: NDArray[np.float32], dim: int) -> faiss.Index:
     """Create a flat inner-product index over unit vectors.
 
     Flat is exact and, at this corpus size, equivalent to a numpy dot product.

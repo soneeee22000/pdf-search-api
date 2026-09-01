@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest==9.1.1", "httpx==0.28.1"]
+dev = ["pytest==9.1.1", "httpx==0.28.1", "ruff==0.13.3", "mypy==1.18.2"]
 
 [project.scripts]
 pdf-search-ingest = "pdf_search.ingest:main"
@@ -30,3 +30,27 @@ where = ["src"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+# FastAPI's dependency injection is expressed as a call in an argument
+# default; that is the framework's documented idiom, not the mutable-default
+# bug B008 exists to catch.
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["src"]
+
+# faiss, pypdfium2 and sentence-transformers ship no type information. Their
+# call sites are typed here; the libraries themselves cannot be.
+[[tool.mypy.overrides]]
+module = ["faiss.*", "pypdfium2.*", "sentence_transformers.*"]
+ignore_missing_imports = true

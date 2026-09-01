@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 import numpy as np
+from numpy.typing import NDArray
 
 DEFAULT_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
@@ -33,7 +34,7 @@ class Embedder(Protocol):
     def dim(self) -> int:
         """Embedding dimension."""
 
-    def encode(self, texts: list[str]) -> np.ndarray:
+    def encode(self, texts: list[str]) -> NDArray[np.float32]:
         """Encode texts into a (len(texts), dim) float32 array of unit vectors."""
 
     def count_tokens(self, text: str) -> int:
@@ -66,7 +67,7 @@ class SentenceTransformerEmbedder:
         """Embedding dimension, read from the loaded model."""
         return self._dim
 
-    def encode(self, texts: list[str]) -> np.ndarray:
+    def encode(self, texts: list[str]) -> NDArray[np.float32]:
         """Encode with normalisation on, so inner product is cosine similarity.
 
         `normalize_embeddings` defaults to False; leaving it off silently turns

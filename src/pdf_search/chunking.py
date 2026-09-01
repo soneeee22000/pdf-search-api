@@ -14,7 +14,7 @@ reconstructed from character offsets.
 from __future__ import annotations
 
 import re
-from typing import Callable, Iterable
+from collections.abc import Callable, Iterable
 
 from pdf_search.schemas import ChunkRecord, PageRecord
 
