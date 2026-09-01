@@ -16,7 +16,7 @@ from pathlib import Path
 
 from pdf_search import storage
 from pdf_search.chunking import chunk_page
-from pdf_search.embeddings import DEFAULT_MODEL_NAME, Embedder, budget_for
+from pdf_search.embeddings import DEFAULT_MODEL_NAME, Embedder, chunk_budget_for
 from pdf_search.pdf_text import discover_pdfs, extract_pages
 from pdf_search.schemas import ChunkRecord, Manifest, PageRecord
 
@@ -42,13 +42,16 @@ def build_argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def collect_chunks(pages: list[PageRecord], embedder: Embedder) -> list[ChunkRecord]:
+def collect_chunks(
+    pages: list[PageRecord], embedder: Embedder, budget: int | None = None
+) -> list[ChunkRecord]:
     """Chunk every extracted page, numbering chunks contiguously across the corpus.
 
-    The budget comes from the model rather than from a constant, so a model with
-    a wider window produces correspondingly larger chunks without a code change.
+    The budget comes from the model rather than from a constant. `budget` exists
+    for the evaluation harness, which needs to hold the chunk size fixed while
+    the model varies; ingestion itself never passes it.
     """
-    budget = budget_for(embedder.max_seq_length)
+    budget = budget or chunk_budget_for(embedder.name, embedder.max_seq_length)
     chunks: list[ChunkRecord] = []
     for page in pages:
         chunks.extend(
@@ -57,7 +60,9 @@ def collect_chunks(pages: list[PageRecord], embedder: Embedder) -> list[ChunkRec
     return chunks
 
 
-def run_ingestion(input_dir: Path, output_dir: Path, embedder: Embedder) -> Manifest:
+def run_ingestion(
+    input_dir: Path, output_dir: Path, embedder: Embedder, budget: int | None = None
+) -> Manifest:
     """Extract, chunk, embed and persist. Returns the manifest that was written."""
     started = time.monotonic()
     pdf_paths = discover_pdfs(input_dir)
@@ -69,7 +74,8 @@ def run_ingestion(input_dir: Path, output_dir: Path, embedder: Embedder) -> Mani
         pages.extend(document_pages)
         _log_document(document_pages, pdf_path.name)
 
-    chunks = collect_chunks(pages, embedder)
+    budget = budget or chunk_budget_for(embedder.name, embedder.max_seq_length)
+    chunks = collect_chunks(pages, embedder, budget)
     if not chunks:
         raise RuntimeError(
             "no text could be extracted from any document, so there is nothing to index. "
@@ -84,7 +90,7 @@ def run_ingestion(input_dir: Path, output_dir: Path, embedder: Embedder) -> Mani
         embedding_dim=embedder.dim,
         query_prefix=embedder.prefixes.query,
         document_prefix=embedder.prefixes.document,
-        chunk_token_budget=budget_for(embedder.max_seq_length),
+        chunk_token_budget=budget,
         n_documents=len(pdf_paths),
         n_chunks=len(chunks),
         n_pages=len(pages),

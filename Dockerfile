@@ -21,7 +21,7 @@ RUN pip install --no-cache-dir --index-url ${TORCH_CPU_INDEX} \
 
 # Bake the embedding model into the image so the reviewer's first run needs no
 # download and works offline.
-ARG MODEL_NAME=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+ARG MODEL_NAME=intfloat/multilingual-e5-small
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('${MODEL_NAME}')" \
  && chmod -R a+rX /opt/models
 

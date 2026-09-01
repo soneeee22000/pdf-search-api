@@ -11,9 +11,11 @@ import pytest
 
 from pdf_search.chunking import CHUNK_TOKEN_BUDGET
 from pdf_search.embeddings import (
+    BASELINE_MODEL_NAME,
     DEFAULT_MODEL_NAME,
     PrefixScheme,
     budget_for,
+    chunk_budget_for,
     prefixes_for,
 )
 
@@ -38,9 +40,37 @@ def test_a_window_too_small_to_carry_content_is_refused() -> None:
         budget_for(8)
 
 
-def test_the_incumbent_uses_no_prefixes() -> None:
-    """This is what makes the asymmetric refactor a no-op for the shipped index."""
-    assert prefixes_for(DEFAULT_MODEL_NAME) == PrefixScheme(query="", document="")
+def test_the_baseline_model_uses_no_prefixes() -> None:
+    """The model the brief suggests has no notion of a query role at all."""
+    assert prefixes_for(BASELINE_MODEL_NAME) == PrefixScheme(query="", document="")
+
+
+def test_the_default_model_is_asymmetric() -> None:
+    """The shipped model is retrieval-trained, so its two sides differ."""
+    scheme = prefixes_for(DEFAULT_MODEL_NAME)
+    assert scheme.query and scheme.document
+    assert scheme.query != scheme.document
+
+
+def test_the_shipped_budget_is_measured_not_derived() -> None:
+    """The window would allow 494; the corpus measured better at 110.
+
+    Regression guard for a tempting simplification: deriving the budget from the
+    window alone would silently triple the chunk size and, on this corpus, cost
+    five of twenty-six paraphrase queries.
+    """
+    assert budget_for(512) == 494
+    assert chunk_budget_for(DEFAULT_MODEL_NAME, 512) == 110
+
+
+def test_a_model_without_a_measured_budget_falls_back_to_the_window() -> None:
+    """Nothing is pinned for a model this corpus was never measured against."""
+    assert chunk_budget_for("some/unlisted-model", 512) == budget_for(512)
+
+
+def test_a_measured_budget_never_exceeds_what_the_window_allows() -> None:
+    """A measurement cannot license truncation if the window is later narrower."""
+    assert chunk_budget_for(DEFAULT_MODEL_NAME, 64) == budget_for(64)
 
 
 def test_e5_models_distinguish_queries_from_passages() -> None:

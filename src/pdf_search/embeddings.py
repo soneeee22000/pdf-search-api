@@ -25,7 +25,11 @@ from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+DEFAULT_MODEL_NAME = "intfloat/multilingual-e5-small"
+
+# The model the exercise brief suggests. Kept named because the README compares
+# against it and the evaluation set still scores it.
+BASELINE_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 # Every sequence carries two special tokens, so a model's advertised window is
 # two tokens larger than the content it can actually hold.
@@ -64,7 +68,7 @@ class PrefixScheme:
 # Keyed by exact model id, taken from the model cards. Where a card documents no
 # prefix the entry is the empty scheme rather than a guess.
 _PREFIX_SCHEMES: dict[str, PrefixScheme] = {
-    DEFAULT_MODEL_NAME: PrefixScheme(),
+    BASELINE_MODEL_NAME: PrefixScheme(),
     "intfloat/multilingual-e5-small": PrefixScheme(query="query: ", document="passage: "),
     "intfloat/multilingual-e5-base": PrefixScheme(query="query: ", document="passage: "),
     "intfloat/multilingual-e5-large": PrefixScheme(query="query: ", document="passage: "),
@@ -95,11 +99,34 @@ def prefixes_for(model_name: str) -> PrefixScheme:
     return scheme
 
 
-def budget_for(max_seq_length: int) -> int:
-    """Content tokens a model can hold, less special tokens and headroom.
+# Budgets that were measured rather than derived, because the measurement
+# disagreed with the window. `multilingual-e5-small` advertises 512 tokens and
+# would earn 494, but on this corpus 494 scored 11/26 on the paraphrase tier
+# against 16/26 at 110: a 494-token chunk spans several unrelated deliberations,
+# and mean pooling averages them into a vector that matches none of them well.
+# The wider window is real, and taking it would have made retrieval worse.
+MEASURED_BUDGETS: dict[str, int] = {
+    "intfloat/multilingual-e5-small": 110,
+}
 
-    Returns 110 for the incumbent's 128-token window, which is the constant the
-    chunker used before this became a function of the model.
+
+def chunk_budget_for(model_name: str, max_seq_length: int) -> int:
+    """The budget to chunk at: measured where measured, derived otherwise.
+
+    A model's window is an upper bound, not a recommendation. Where this corpus
+    was actually measured at more than one budget, the measured answer wins.
+    """
+    measured = MEASURED_BUDGETS.get(model_name)
+    if measured is not None:
+        return min(measured, budget_for(max_seq_length))
+    return budget_for(max_seq_length)
+
+
+def budget_for(max_seq_length: int) -> int:
+    """Content tokens a model could hold, less special tokens and headroom.
+
+    This is the ceiling the window imposes. It is not necessarily the budget to
+    use -- see `chunk_budget_for`. Returns 110 for a 128-token window.
     """
     budget = max_seq_length - SPECIAL_TOKEN_ALLOWANCE - BUDGET_HEADROOM_TOKENS
     if budget < 1:
