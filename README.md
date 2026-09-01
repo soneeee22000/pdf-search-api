@@ -188,7 +188,7 @@ without an atomic directory swap — see [Full rebuild, no incremental path](#fu
 ### Ingestion — run once per corpus change
 
 ```mermaid
-flowchart LR
+flowchart TD
   A[PDF folder<br/>CLI argument] --> B[pypdfium2<br/>per-page extract]
   B --> C{page status}
   C -->|extracted| D["normalise<br/>NFKC · soft hyphen · de-hyphenate"]
@@ -209,7 +209,7 @@ identical to one that succeeded, and that is the failure mode worth engineering 
 ### Query — the API loads once at startup
 
 ```mermaid
-flowchart LR
+flowchart TD
   S[("storage/")] -->|lifespan| L[index + metadata + model]
   L --> V{manifest agrees?<br/>vector count matches metadata?<br/>model dim matches index?}
   V -->|no| X[503 naming the<br/>ingest command that fixes it]
