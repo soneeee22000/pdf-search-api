@@ -95,3 +95,53 @@ def test_carried_overlap_cannot_push_a_chunk_over_the_budget(count_tokens) -> No
 
     assert chunks
     assert max(count_tokens(chunk.text) for chunk in chunks) <= 110
+
+
+def _words(text: str) -> list[str]:
+    """Whitespace-delimited words with the separators the splitter consumes removed.
+
+    Byte-exact conservation is not achievable by construction: `_split_to_budget`
+    splits on its separators, which consumes them, and the merge rejoins on a
+    single space. What must be conserved is the content between separators.
+    """
+    return [word.strip(".") for word in text.split() if word.strip(".")]
+
+
+def test_a_short_trailing_span_is_kept_rather_than_dropped(count_tokens) -> None:
+    """A bare reference number is short, not meaningless.
+
+    Regression: any chunk under MIN_CHUNK_CHARS was discarded whenever a page
+    produced two or more, so a lone deliberation number vanished from the index
+    while still sitting in the PDF -- a provenance bug for this corpus.
+    """
+    body = " ".join(f"mot{i}" for i in range(50))
+    reference = "N DEL05-06-2026-02"
+
+    chunks = chunk_page(_page(f"{body}\n\n{reference}"), count_tokens, budget=50, overlap=0)
+
+    assert "DEL05-06-2026-02" in " ".join(chunk.text for chunk in chunks)
+
+
+def test_chunking_conserves_every_word_of_the_page(count_tokens) -> None:
+    """No content is dropped, only redistributed."""
+    body = " ".join(f"mot{i}" for i in range(50))
+    reference = "N DEL05-06-2026-02"
+    page_text = f"{body}\n\n{reference}"
+
+    chunks = chunk_page(_page(page_text), count_tokens, budget=50, overlap=0)
+
+    emitted = [word for chunk in chunks for word in _words(chunk.text)]
+    assert emitted == _words(page_text)
+
+
+def test_no_word_is_lost_when_overlap_duplicates_context(count_tokens) -> None:
+    """With overlap on, chunks repeat words but must still cover all of them."""
+    tail = " ".join(f"fin{i}" for i in range(10))
+    para_a = " ".join(f"mot{i}" for i in range(95)) + ". " + tail
+    para_b = " ".join(f"autre{i}" for i in range(105))
+    page_text = f"{para_a}\n\n{para_b}"
+
+    chunks = chunk_page(_page(page_text), count_tokens, budget=110, overlap=20)
+
+    emitted = {word for chunk in chunks for word in _words(chunk.text)}
+    assert set(_words(page_text)) <= emitted

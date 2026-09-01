@@ -124,7 +124,26 @@ def _merge_with_overlap(
     if current.strip():
         chunks.append(current.strip())
 
-    return [c for c in chunks if len(c) >= MIN_CHUNK_CHARS or len(chunks) == 1]
+    return _absorb_runts(chunks, count_tokens, budget)
+
+
+def _absorb_runts(chunks: list[str], count_tokens: TokenCounter, budget: int) -> list[str]:
+    """Fold a too-short chunk into its predecessor, or keep it standalone.
+
+    These used to be discarded outright. A bare reference number or a one-cell
+    table row is short, not meaningless, and a passage the corpus contains but
+    the index does not is a provenance bug -- which is the one thing this
+    system is supposed to be trusted on.
+    """
+    kept: list[str] = []
+    for chunk in chunks:
+        if kept and len(chunk) < MIN_CHUNK_CHARS:
+            merged = f"{kept[-1]} {chunk}".strip()
+            if count_tokens(merged) <= budget:
+                kept[-1] = merged
+                continue
+        kept.append(chunk)
+    return kept
 
 
 def _enforce_budget(texts: Iterable[str], count_tokens: TokenCounter, budget: int) -> list[str]:
