@@ -422,13 +422,17 @@ inside this image. A test caught it.
 
 ### Tested on the supplied corpus
 
-Run through the Docker commands above, on the seven PDFs provided with the exercise:
+Run on the seven PDFs provided with the exercise:
 
 | Documents | Pages | Pages with text | Pages with no text | Chunks | Characters | Ingestion |
 | --------- | ----- | --------------- | ------------------ | ------ | ---------- | --------- |
 | 7         | 64    | 62              | 2                  | 387    | 136,580    | 8.7 s     |
 
-Two observations from that run, both matching the limitations described below:
+These figures come from the local run (`python -m pdf_search.ingest`). The Docker path invokes the same
+entry point over the same corpus, so it produces the same index — ingestion is deterministic and nothing in
+it depends on the container.
+
+Observations from that run, all matching the limitations described below:
 
 - **Both no-text pages belong to one document** — the stamped urbanisme _déclaration préalable_, which has no
   text layer at all, so **six of the seven documents are actually retrievable** (see
