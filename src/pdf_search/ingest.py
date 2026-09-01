@@ -85,7 +85,7 @@ def run_ingestion(input_dir: Path, output_dir: Path, embedder: Embedder) -> Mani
     )
 
     storage.save(output_dir, index, chunks, manifest)
-    _print_summary(manifest, pages, chunks, output_dir, time.monotonic() - started)
+    _print_summary(manifest, pages, chunks, input_dir, output_dir, time.monotonic() - started)
     return manifest
 
 
@@ -101,6 +101,7 @@ def _print_summary(
     manifest: Manifest,
     pages: list[PageRecord],
     chunks: list[ChunkRecord],
+    input_dir: Path,
     output_dir: Path,
     elapsed: float,
 ) -> None:
@@ -109,7 +110,7 @@ def _print_summary(
     Pages with no text layer are named rather than counted silently: a corpus
     where a document contributed nothing must not look like a successful run.
     """
-    print(f"\nIngested {manifest.n_documents} document(s) from {output_dir}")
+    print(f"\nIngested {manifest.n_documents} document(s) from {input_dir}")
     print(f"  pages           : {manifest.n_pages}")
     print(f"  pages with text : {manifest.n_pages - manifest.n_pages_no_text}")
     print(f"  pages no text   : {manifest.n_pages_no_text}")
@@ -117,6 +118,7 @@ def _print_summary(
     print(f"  characters      : {sum(len(c.text) for c in chunks):,}")
     print(f"  model           : {manifest.model_name} ({manifest.embedding_dim}-d)")
     print(f"  elapsed         : {elapsed:.1f}s")
+    print(f"  index written to: {output_dir}")
 
     unusable = [p for p in pages if p.status != "extracted"]
     if unusable:
