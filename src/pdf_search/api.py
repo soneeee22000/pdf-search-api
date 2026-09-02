@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.responses import HTMLResponse
 
 from pdf_search import storage
 from pdf_search.embeddings import DEFAULT_MODEL_NAME, Embedder, PrefixScheme
@@ -24,6 +25,11 @@ logger = logging.getLogger(__name__)
 
 STORAGE_DIR_ENV = "PDF_SEARCH_STORAGE_DIR"
 MODEL_NAME_ENV = "PDF_SEARCH_MODEL"
+
+# One self-contained page, served from the package rather than a CDN: the
+# container runs with no network access, so anything fetched at load time
+# would render blank in the environment this is meant to be evaluated in.
+_INDEX_HTML = Path(__file__).resolve().parent / "static" / "index.html"
 
 
 class SearchService:
@@ -173,3 +179,19 @@ def search(request: SearchRequest, service: SearchService = Depends(get_service)
     Scores are cosine similarities in [-1, 1]; higher is more similar.
     """
     return service.search(request.query, request.top_k)
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+def index() -> HTMLResponse:
+    """Serve the search client.
+
+    Read per request rather than cached at import so the file can be edited
+    against a running --reload server. It is a few kilobytes from local disk;
+    the query it submits costs four orders of magnitude more.
+    """
+    if not _INDEX_HTML.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="the search client is not installed; the API itself is unaffected",
+        )
+    return HTMLResponse(_INDEX_HTML.read_text(encoding="utf-8"))

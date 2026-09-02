@@ -46,6 +46,7 @@ it finds passages, it does not write answers, so it cannot invent one.
 ## Contents
 
 - [Quick start](#quick-start) · [Running without Docker](#running-without-docker)
+- [The search client](#the-search-client) · [Interactive API docs](#interactive-api-documentation)
 - [API](#api)
 - [Architecture](#architecture)
 - [The corpus](#the-corpus)
@@ -82,11 +83,19 @@ docker run --rm -p 8000:8000 \
 #     takes tens of seconds -- wait for health to report ok before querying.
 curl -s localhost:8000/health
 
-# 6. Query
+# 6. Query -- or just open http://localhost:8000 and type
 curl -s localhost:8000/search \
   -H 'Content-Type: application/json' \
   -d '{"query":"Quelle est la position du document sur les politiques publiques ?","top_k":5}'
 ```
+
+Three things are served, and none of them needs a network connection:
+
+| URL | What it is |
+| --- | ---------- |
+| `/` | A search page — query box, result count, and the document, page, chunk index and score of each hit |
+| `/docs` | FastAPI's interactive OpenAPI documentation, with **Try it out** against the live index |
+| `/health` | Whether an index is loaded, how many chunks, and which model |
 
 <details>
 <summary>PowerShell equivalents</summary>
@@ -132,6 +141,47 @@ PYTHONPATH=src uvicorn pdf_search.api:app --reload
 
 PYTHONPATH=src pytest        # 78 tests, no network, no model download
 ```
+
+---
+
+## The search client
+
+`GET /` serves a search page so the service can be evaluated by typing rather than by composing curl
+bodies. It is **one self-contained HTML file** — inline CSS and JavaScript, no CDN, no build step, no
+framework — because the container runs with no network access and anything fetched at load time would
+render as a blank page in exactly the environment this is meant to be evaluated in. A test asserts the file
+contains no external origin.
+
+![The search client, showing five results with score, document, page and chunk index](docs/search-client.png)
+
+The screenshots on this page are captures of a local run (`uvicorn` on `127.0.0.1:8000`, the same entry
+point the container uses). **There is no hosted deployment** — clone the repository, run the three commands
+above, and this is what you get.
+
+The client is deliberately thin. It posts to the same `POST /search` endpoint documented below, renders the
+five contract fields, and shows the round-trip time; the 70 ms above is a warm query, and essentially all of
+it is the model embedding the query rather than the index searching — see
+[FAISS, though numpy would do](#faiss-though-numpy-would-do). When the index is missing the page still
+loads and shows the 503 and the command that fixes it, rather than failing blank.
+
+It is also the fastest way to see the limitation this system actually has. Searching for the deliberation
+reference `DEL07-05-2026-24`, which occurs literally on exactly one page of the corpus, does not return that
+page at all — the top two hits are page headers, and the third is `DEL07-05-2026-16`, a different
+deliberation whose identifier merely has the same shape:
+
+![Searching an exact deliberation reference returns page headers and a different deliberation](docs/lexical-failure.png)
+
+That is the case for a lexical lane, argued at more length in
+[Where search quality will be poor](#where-search-quality-will-be-poor).
+
+### Interactive API documentation
+
+`GET /docs` is FastAPI's OpenAPI UI, generated from the same Pydantic models that validate the requests, so
+it cannot drift from the implementation. **Try it out** runs against the live index.
+
+![The OpenAPI documentation with POST /search expanded](docs/openapi-docs.png)
+
+The raw schema is at `/openapi.json`, and `/redoc` serves the same specification in a reference layout.
 
 ---
 
@@ -710,7 +760,9 @@ pdf-search-api/
 │   ├── embeddings.py    # Embedder protocol + sentence-transformers adapter
 │   ├── storage.py       # FAISS index, JSONL sidecar, manifest, search
 │   ├── ingest.py        # CLI entry point (pdf-search-ingest)
-│   └── api.py           # FastAPI app
+│   ├── api.py           # FastAPI app
+│   └── static/
+│       └── index.html   # the search client: one file, no CDN, no build step
 ├── tests/
 │   ├── conftest.py      # FakeEmbedder + injected token counter — no model download
 │   └── fixtures/        # two synthetic PDFs, with the script that regenerates them

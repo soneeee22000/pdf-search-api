@@ -152,6 +152,36 @@ def test_health_without_an_index_reports_unavailable(unavailable_client) -> None
     assert body["n_chunks"] == 0
 
 
+def test_the_search_client_is_served_at_the_root(client) -> None:
+    """The reviewer should be able to open the service and type, not only curl it."""
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    body = response.text
+    assert 'id="search"' in body
+    assert "/docs" in body
+
+
+def test_the_client_loads_even_when_the_index_does_not(unavailable_client) -> None:
+    """The page is static, so it must still render and show the 503 rather than blank.
+
+    A client that fails to load when the index is missing hides the one message
+    that says how to fix it.
+    """
+    assert unavailable_client.get("/").status_code == 200
+
+
+def test_the_client_references_no_external_origin() -> None:
+    """The container has no network, so a CDN reference would render as nothing."""
+    html = (
+        Path(api.__file__).resolve().parent / "static" / "index.html"
+    ).read_text(encoding="utf-8")
+
+    assert "http://" not in html
+    assert "https://" not in html
+
+
 def test_a_model_disagreeing_with_the_manifest_is_refused(
     tmp_path: Path, fake_embedder, monkeypatch
 ) -> None:

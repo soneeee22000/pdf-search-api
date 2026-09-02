@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PDF Search API</title>
+    <!--
+      Deliberately one self-contained file: no CDN, no build step, no framework.
+      The container runs offline, so anything fetched from a network would be a
+      blank page in the environment this is meant to be evaluated in.
+    -->
+    <style>
+      :root {
+        --bg: #fbfaf8;
+        --surface: #ffffff;
+        --ink: #1c1a17;
+        --muted: #6b665e;
+        --line: #e4e0d9;
+        --accent: #2f5d50;
+        --accent-ink: #ffffff;
+        --radius: 10px;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #16150f;
+          --surface: #201e17;
+          --ink: #f2efe8;
+          --muted: #a8a296;
+          --line: #34302a;
+          --accent: #7fb3a1;
+          --accent-ink: #16150f;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font:
+          16px/1.55 ui-sans-serif,
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+      }
+      main {
+        max-width: 60rem;
+        margin: 0 auto;
+        padding: 2rem 1.25rem 4rem;
+      }
+      header {
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 1.25rem;
+        margin-bottom: 1.5rem;
+      }
+      h1 {
+        font-size: 1.5rem;
+        margin: 0 0 0.35rem;
+        letter-spacing: -0.01em;
+      }
+      .sub {
+        color: var(--muted);
+        margin: 0;
+        font-size: 0.95rem;
+      }
+      .sub a {
+        color: inherit;
+      }
+      form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-bottom: 1.5rem;
+      }
+      label {
+        display: block;
+        font-size: 0.8rem;
+        color: var(--muted);
+        margin-bottom: 0.3rem;
+      }
+      .grow {
+        flex: 1 1 22rem;
+      }
+      input,
+      select,
+      button {
+        font: inherit;
+        font-size: 16px; /* below this iOS zooms the page on focus */
+        border-radius: var(--radius);
+        border: 1px solid var(--line);
+        padding: 0.7rem 0.8rem;
+        min-height: 44px;
+        background: var(--surface);
+        color: var(--ink);
+      }
+      input:focus-visible,
+      select:focus-visible,
+      button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+      }
+      button {
+        background: var(--accent);
+        color: var(--accent-ink);
+        border-color: var(--accent);
+        cursor: pointer;
+        padding-inline: 1.25rem;
+        align-self: end;
+      }
+      button[disabled] {
+        opacity: 0.6;
+        cursor: progress;
+      }
+      .status {
+        color: var(--muted);
+        font-size: 0.9rem;
+        margin-bottom: 1rem;
+        min-height: 1.4em;
+      }
+      .status[data-tone="error"] {
+        color: #b3382c;
+      }
+      @media (prefers-color-scheme: dark) {
+        .status[data-tone="error"] {
+          color: #f0908a;
+        }
+      }
+      ol {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: 0.85rem;
+      }
+      li {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 1rem;
+      }
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem 1rem;
+        align-items: baseline;
+        font-size: 0.82rem;
+        color: var(--muted);
+        margin-bottom: 0.5rem;
+      }
+      .score {
+        font-variant-numeric: tabular-nums;
+        font-weight: 600;
+        color: var(--accent);
+        font-size: 0.95rem;
+      }
+      .doc {
+        word-break: break-all;
+      }
+      .text {
+        margin: 0;
+        white-space: pre-wrap;
+      }
+      footer {
+        margin-top: 2.5rem;
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>PDF Search API</h1>
+        <p class="sub">
+          Similarity search over chunks extracted from a local PDF corpus.
+          Interactive API docs at <a href="/docs">/docs</a> · health at
+          <a href="/health">/health</a>
+        </p>
+      </header>
+
+      <form id="search">
+        <div class="grow">
+          <label for="query">Requête</label>
+          <input
+            id="query"
+            name="query"
+            type="search"
+            required
+            maxlength="2000"
+            placeholder="Quels sont les montants des subventions accordées aux associations ?"
+            value="Quels sont les montants des subventions accordées aux associations ?"
+          />
+        </div>
+        <div>
+          <label for="top_k">Résultats</label>
+          <select id="top_k" name="top_k">
+            <option>3</option>
+            <option selected>5</option>
+            <option>10</option>
+            <option>20</option>
+          </select>
+        </div>
+        <button type="submit" id="go">Rechercher</button>
+      </form>
+
+      <p class="status" id="status" role="status" aria-live="polite"></p>
+      <ol id="results"></ol>
+
+      <footer>
+        Scores are cosine similarities in [-1, 1]; higher is more similar. This
+        model packs them into a narrow high band, so the ordering is meaningful
+        but the absolute value is not a confidence.
+      </footer>
+    </main>
+
+    <script>
+      const form = document.getElementById("search");
+      const statusEl = document.getElementById("status");
+      const resultsEl = document.getElementById("results");
+      const button = document.getElementById("go");
+
+      function setStatus(message, tone) {
+        statusEl.textContent = message;
+        if (tone) {
+          statusEl.dataset.tone = tone;
+        } else {
+          delete statusEl.dataset.tone;
+        }
+      }
+
+      function render(body, elapsedMs) {
+        resultsEl.replaceChildren();
+        if (!body.results.length) {
+          setStatus("Aucun résultat.");
+          return;
+        }
+        for (const hit of body.results) {
+          const item = document.createElement("li");
+
+          const meta = document.createElement("div");
+          meta.className = "meta";
+
+          const score = document.createElement("span");
+          score.className = "score";
+          score.textContent = hit.score.toFixed(3);
+
+          const doc = document.createElement("span");
+          doc.className = "doc";
+          doc.textContent = hit.document_name;
+
+          const where = document.createElement("span");
+          where.textContent = `page ${hit.page_number} · chunk ${hit.chunk_index}`;
+
+          meta.append(score, doc, where);
+
+          const text = document.createElement("p");
+          text.className = "text";
+          text.textContent = hit.text;
+
+          item.append(meta, text);
+          resultsEl.append(item);
+        }
+        setStatus(`${body.results.length} résultat(s) en ${elapsedMs} ms.`);
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const query = document.getElementById("query").value.trim();
+        if (!query) {
+          setStatus("Saisissez une requête.", "error");
+          return;
+        }
+        button.disabled = true;
+        setStatus("Recherche…");
+        const started = performance.now();
+        try {
+          const response = await fetch("/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              query,
+              top_k: Number(document.getElementById("top_k").value),
+            }),
+          });
+          const body = await response.json();
+          if (!response.ok) {
+            // 503 names the command that fixes it; 422 explains the rejection.
+            const detail =
+              typeof body.detail === "string"
+                ? body.detail
+                : JSON.stringify(body.detail);
+            resultsEl.replaceChildren();
+            setStatus(`${response.status} — ${detail}`, "error");
+            return;
+          }
+          render(body, Math.round(performance.now() - started));
+        } catch (error) {
+          resultsEl.replaceChildren();
+          setStatus(`La requête a échoué : ${error.message}`, "error");
+        } finally {
+          button.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
