@@ -135,8 +135,8 @@ Both engines ran in the same container against the same 16 gold strings.
 | Gold string retrievable @5 | 0/16 | **16/16** | 14/16 |
 | Paraphrased question @5 | 0/16 | **11/16** | 5/16 |
 | Chunks | 387 | 418 | 413 |
-| Extraction | 1.6 s | 12.5 s | 42.3 s |
-| Ingestion | 24.6 s | 25.8 s | 37.4 s |
+| Extraction | 0.87 s | **9.64 s** | 42.28 s |
+| Ingestion | 17.32 s | **30.06 s** | 37.36 s |
 
 **Reporting fidelity twice was worth it.** RapidOCR scores 1/16 strict and 14/16 ignoring spaces. That
 13-point gap is a single defect isolated: its recognition model's character set contains **no space token**,
@@ -161,7 +161,7 @@ a reason that does not exist.
 | ---- | --------- | --------- |
 | Gold strings retrievable @5 | >= 12 of 16 | 16/16 pass |
 | Added image size | <= 300 MB | 118 MB pass |
-| Added ingestion | <= 60 s | +1.3 s pass |
+| Added ingestion | <= 60 s | +12.7 s pass |
 | 387 existing chunks byte-identical | required | pass |
 | OCR touches only text-less pages | required | pass |
 | Every labelled query returns what it returned | required | **fail** |

@@ -92,7 +92,8 @@ curl -s localhost:8000/search \
   -d '{"query":"Quelle est la position du document sur les politiques publiques ?","top_k":5}'
 ```
 
-Three things are served, and none of them needs a network connection:
+Three things are served. `/` and `/health` work with no network at all; `/docs` serves its own HTML but
+pulls the Swagger UI assets from a CDN, so it renders only where there is one:
 
 | URL | What it is |
 | --- | ---------- |
@@ -142,7 +143,7 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu   # CPU-only,
 PYTHONPATH=src python -m pdf_search.ingest --input-dir ./sample-pdfs --output-dir ./storage
 PYTHONPATH=src uvicorn pdf_search.api:app --reload
 
-PYTHONPATH=src pytest        # 83 tests, no network, no model download
+PYTHONPATH=src pytest        # 90 tests, no network, no model download
 ```
 
 ---
@@ -265,7 +266,12 @@ without an atomic directory swap — see [Full rebuild, no incremental path](#fu
 flowchart TD
   A["PDF folder<br/>CLI argument"] --> B["Extract per page<br/>pypdfium2"]
   B --> C{"Page has text?"}
-  C -->|no| R["Counted and named<br/>in the run summary"]
+  C -->|no| O{"--ocr engine given?"}
+  O -->|no| R["Counted and named<br/>in the run summary"]
+  O -->|yes| T["Render at 216 DPI,<br/>recognise · tesseract"]
+  T --> U{"Recovered usable text?"}
+  U -->|no| R
+  U -->|yes| D
   C -->|yes| D["Normalise, then chunk<br/>page-local · 110-token budget"]
   D --> E["Embed on CPU<br/>L2-normalised"]
   E --> F["index.faiss + metadata.jsonl<br/>one row each, same order"]
@@ -296,7 +302,9 @@ rather than crash-looping, which is far easier to diagnose.
 ```mermaid
 flowchart TD
   schemas["schemas.py<br/>data contracts"]
+  ocr["ocr.py<br/>engines, lazily imported"]
   pdf_text[pdf_text.py] --> schemas
+  pdf_text --> ocr
   chunking[chunking.py] --> schemas
   storage[storage.py] --> schemas
   embeddings[embeddings.py]
@@ -304,11 +312,12 @@ flowchart TD
   ingest --> chunking
   ingest --> storage
   ingest --> embeddings
+  ingest --> ocr
   api[api.py] --> storage
   api --> embeddings
   api --> schemas
   classDef seam stroke-dasharray: 5 5
-  class pdf_text,embeddings,storage seam
+  class pdf_text,embeddings,storage,ocr seam
 ```
 
 `schemas.py` is the leaf — everything depends on it and it depends on nothing, which is why the
@@ -347,7 +356,7 @@ against a hypothetical corpus.
 | `159687_…convention_de_mecenat…pdf`      | 8.8 % · 36 chunks · 7 pp        | Draft sponsorship contract, Béziers                    | Continuous legal prose — the easy case                                                        |
 | `d235546020071500_9622.pdf`              | 3.1 % · 12 chunks · 2 pp        | Roadworks order, Jouy-en-Josas                         | Dense with identifiers (`ARR2026-222`, GPS coordinates) that dense retrieval handles poorly   |
 | `Ordre_du_jour_18-06-2026.pdf`           | 2.4 % · 9 chunks · 2 pp         | Council agenda, Grand Annecy                           | Short list items carry little context; mean pooling pushes them toward the corpus average     |
-| `AW Solutions – Dématérialisation…pdf`   | 2.2 % · 9 chunks · 2 pp         | Public tender notice / sales deck                      | Multi-column, and off-topic relative to the rest — a topical query can surface it             |
+| `AW Solutions – Dématérialisation…pdf`   | 2.2 % · 9 chunks · 2 pp         | Public tender notice (avis d'appel public a la concurrence)                      | Multi-column, and off-topic relative to the rest — a topical query can surface it             |
 | `260520_TABLEAU_DELIBERATIONS_SIGNE.pdf` | 2.1 % · 10 chunks · 2 pp        | Signed table of resolutions, Pluherlin                 | Linearised table: the header row that gives every other row its meaning ends up far from them |
 | `AFF-2026.06.11-DP-…ACCORD.pdf`          | **0 %** · 0 chunks · 2 pp       | Stamped planning permission notice                     | **No text layer at all.** Scanned image. Ingested, counted, named — and contributes nothing   |
 
@@ -357,7 +366,8 @@ ingestion summary names it explicitly rather than reporting a clean run over a d
 dropped.
 
 Two properties of this corpus shape everything below: one document is four fifths of the text, and the
-documents are heterogeneous in genre — official records beside a vendor brochure. Both are realistic,
+documents are heterogeneous in genre — one commune's official records beside a housing association's
+tender notice. Both are realistic,
 and both hurt dense retrieval in ways described in
 [Where search quality will be poor](#where-search-quality-will-be-poor).
 
@@ -382,7 +392,7 @@ before either candidate ran, 16 strings read off the two scanned pages by eye, a
 | Fidelity, ignoring spaces | 0/16 | 15/16 | 14/16 |
 | Gold string retrievable @5 | 0/16 | **16/16** | 14/16 |
 | Paraphrased question @5 | 0/16 | **11/16** | 5/16 |
-| Extraction | 1.6 s | 12.5 s | 42.3 s |
+| Extraction | 0.87 s | **9.64 s** | 42.28 s |
 
 **Fidelity is reported twice because one number hides the defect.** RapidOCR scores 1/16 strict and 14/16
 ignoring spaces. The 13-point gap is one thing: its recognition model's character set has **no space token**,
@@ -473,7 +483,8 @@ labelled as one rather than dressed up as a measurement.
 
 **What reproduces, and what does not.** Every evaluation in this section was re-run end to end from a
 clean state. All seven runs reproduced their retrieval figures **exactly** — the same hits at every *k*, the
-same MRR to four decimals — and peak RSS reproduced to within 1%. Wall-clock ingestion did not: the same
+same MRR to four decimals — and peak RSS to within 1.1% (the widest gap being Solon, 1135 MB against
+1123 MB). Wall-clock ingestion did not: the same
 Solon configuration measured 76 s in one session and 43 s in another on the same laptop. The seconds column
 above is therefore written as an order of magnitude and not to a decimal place, and the argument below rests
 on the columns that reproduce.
@@ -489,8 +500,10 @@ cost gate. Two of those gates were badly calibrated, and only the results made i
   mostly the torch runtime, which every candidate shares, so a 2x total gate demands that the model itself
   add less than the whole runtime. Worse, it turned out to track **chunk size** rather than model:
   e5-small measured 1708 MB at a 494-token budget and 843 MB at 110.
-- The **margin** gate was right, and it is why `Solon-embeddings-base-0.1` is not the shipped model despite
-  winning by +8.
+- The **margin** gate was the one that held up. It is not, however, what excluded
+  `Solon-embeddings-base-0.1`: Solon wins Tier B by +8 and clears that gate comfortably. It was rejected by
+  the two cost gates above — the miscalibrated ones — and the reason it is not shipped is the judgement in
+  *Why not Solon-base* below, about weights and query latency, not the rule.
 
 **But that is not why the shipped model was rejected, and it would be convenient to pretend otherwise.**
 The rule scores each model at the budget its own window earns; `multilingual-e5-small` ships at a *measured*
@@ -722,7 +735,7 @@ Observations from that run, all matching the limitations described below:
   text layer at all, so **six of the seven documents are actually retrievable** (see
   [The corpus](#the-corpus)). Ingestion names it and warns that it contributed nothing to the index, rather
   than reporting a clean run over a document it silently dropped. It is the OCR case, and it is why OCR
-  routing is the second item on the improvements list.
+  routing is now implemented — see [the scanned document](#the-scanned-document-and-whether-to-ocr-it).
 - **No chunk was truncated.** Measured against the model's own tokenizer, the longest chunk is 110 content
   tokens — 112 with the two special tokens — against the shipped model's 512-token window, and 25 chunks sit
   exactly on the 110 ceiling with none above it. Every indexed vector therefore represents the whole of the
@@ -742,7 +755,8 @@ claims, by re-extracting each source PDF and confirming the chunk text occurs on
 
 ### Assumptions
 
-- Documents are **text-native**. There is no OCR, so a scanned page contributes nothing.
+- Documents are **text-native by default**. OCR ships but is opt-in, so without `--ocr` a scanned page
+  contributes nothing.
 - Documents are predominantly **French**; the model is multilingual but chunk sizing was measured on French.
 - The corpus is small enough that a **full rebuild** is the right update strategy.
 - The **same model** embeds documents and queries. The manifest records it and startup refuses a model
@@ -752,9 +766,12 @@ claims, by re-extracting each source PDF and confirming the chunk text occurs on
 
 ### Main limitations
 
-- **No OCR.** Pages with no text layer are indexed as nothing. They are counted and named in the ingestion
-  summary rather than silently skipped, because a document contributing zero chunks must not look like a
-  successful run.
+- **OCR is opt-in, and recognised text carries no marker.** Without `--ocr`, a page with no text layer is
+  indexed as nothing — counted and named in the ingestion summary rather than silently skipped, because a
+  document contributing zero chunks must not look like a successful run. With `--ocr tesseract` it is
+  recovered at 15/16 strict fidelity. But a search result gives no indication that its text was recognised
+  rather than extracted, and recognised text is the less trustworthy of the two. The manifest records the
+  engine; the result rows do not.
 - **Multi-column reading order is not reconstructed.** This is a known limitation of every permissively
   licensed extractor, not of the chunker — a slide deck or a two-column layout arrives already interleaved,
   and no chunking strategy repairs that downstream.
@@ -792,9 +809,9 @@ claims, by re-extracting each source PDF and confirming the chunk text occurs on
   five top positions, and finds `L. 2121-29`, `GRDF` and `Jean-Pierre GALUDEC` at rank 1. Exact structured
   identifiers still defeat it.
 
-- **Scanned documents.** Nothing to retrieve.
+- **Scanned documents.** Nothing to retrieve without `--ocr`, and imperfect with it.
 - **Tabular documents.** A chunk from a linearised table is often meaningless in isolation.
-- **Heterogeneous corpora.** If the corpus mixes genres — say, official records and a vendor brochure — a
+- **Heterogeneous corpora.** If the corpus mixes genres — say, council minutes and a tender notice — a
   topical query can surface the commercially-worded document, because there is no document-level filtering or
   type awareness. At this scale there should not be, but it is a real quality effect.
 - **Very short pages.** An agenda line carries little context, and mean pooling over a short chunk produces a
@@ -830,7 +847,9 @@ bug, not just a text bug.
 
 1. **A hybrid lexical + dense retriever.** BM25 over the same chunks, fused with the dense ranking. It is
    the fix for the `DEL07-05-2026-24` failure above, and the single largest quality win still available.
-2. **OCR routing** for pages detected as having no text layer.
+2. **Confidence gating on recognised text.** Tesseract reports per-word confidence and this reads none of
+   it. A page recognised badly is currently indexed with exactly the standing of an embedded text layer;
+   it should be flagged in the result, or held back below a threshold.
 3. **Table-aware extraction** — detect table regions and emit one chunk per row, carrying the header.
 4. **A larger labelled set.** The 26 items in [`eval/`](eval/) are enough to reject a model and not enough to
    separate two good ones: the gap between the shipped model and `Solon-embeddings-base-0.1` is +6 on Tier B,
@@ -862,7 +881,7 @@ bug, not just a text bug.
 
 ### Explicitly out of scope
 
-No LLM or answer generation, no authentication, no database, no OCR, no reranker, no job queue, no hybrid
+No LLM or answer generation, no authentication, no database, no reranker, no job queue, no hybrid
 retrieval. The page at `/` is a thin client over the same endpoint rather than a product surface — no
 pagination, no filters, no highlighting, no state. And no claim that one small multilingual model is
 production-grade for French public-sector documents: it won a four-model bake-off over 26 queries, which is
@@ -878,6 +897,7 @@ pdf-search-api/
 │   ├── schemas.py       # Pydantic contracts — the leaf of the dependency graph
 │   ├── pdf_text.py      # pypdfium2 extraction + French normalisation
 │   ├── chunking.py      # page-local, token-budgeted splitting
+│   ├── ocr.py           # OcrEngine protocol + tesseract/rapidocr, lazily imported
 │   ├── embeddings.py    # Embedder protocol + sentence-transformers adapter
 │   ├── storage.py       # FAISS index, JSONL sidecar, manifest, search
 │   ├── ingest.py        # CLI entry point (pdf-search-ingest)
@@ -889,11 +909,15 @@ pdf-search-api/
 │   └── fixtures/        # two synthetic PDFs, with the script that regenerates them
 ├── eval/
 │   ├── DECISION.md      # the switch rule, committed before any result existed
+│   ├── OCR_DECISION.md  # the OCR rule, likewise, and the clause it fails
 │   ├── queries.jsonl    # 26 labelled queries over 23 gold pages, two tiers
+│   ├── ocr_queries.jsonl# 16 strings read off the scan, no personal data
 │   ├── verify_queries.py# proves the labels are structural, not graded
 │   ├── harness.py       # one model end to end -> one JSON result
+│   ├── ocr_harness.py   # one OCR engine end to end -> one JSON result
 │   ├── report.py        # comparison tables + the rule applied mechanically
-│   └── results/         # the seven runs behind the table above
+│   ├── Dockerfile.ocr-eval  # both OCR engines in one image, for a fair comparison
+│   └── results/         # the ten runs behind the tables above
 ├── Dockerfile           # single stage, CPU-only torch, model baked at build time
 ├── docker-entrypoint.sh # ingest | api | anything else
 └── storage/             # generated: index.faiss · metadata.jsonl · manifest.json
@@ -910,7 +934,7 @@ pdf-search-api/
 PYTHONPATH=src pytest
 ```
 
-83 tests, running in under two seconds with **no network access and no model download** — the embedder and
+90 tests, running in under two seconds with **no network access and no model download** — the embedder and
 the token counter are both injected, and the API fixtures replace the startup builder before the application
 starts rather than after, so no test touches a real model or a real index directory. They cover the token
 budget including the overlap case that used to breach it, word-level text conservation, page attribution,

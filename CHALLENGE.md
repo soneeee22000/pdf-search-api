@@ -103,7 +103,7 @@ We encourage you to make pragmatic decisions and clearly document any assumption
    A README with setup and execution instructions.
    Any assumptions, trade-offs or design decisions you would like to highlight.
    If there are areas you would improve with additional time, feel free to document them in the README.
-   Once your submission is ready, please send the GitHub repository link by email to januka@datapolitics.fr.
+   Once your submission is ready, please send the GitHub repository link by email to [address redacted — this file is public].
    Please ensure that the repository remains accessible until the recruitment process is complete.
    We look forward to discussing your solution, your technical choices and your approach during the interview process.
    Thank you for taking the time to complete this exercise. We appreciate the effort involved and your interest in joining the Datapolitics team.

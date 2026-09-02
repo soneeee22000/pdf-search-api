@@ -15,6 +15,11 @@ dependencies = [
     "faiss-cpu==1.15.0",
     "numpy==2.2.6",
     "sentence-transformers==5.7.0",
+    # OCR for pages with no text layer. The wheel is a thin wrapper: the
+    # tesseract binary and its French data come from apt, which the Dockerfile
+    # installs. Without them `--ocr tesseract` refuses at startup with an
+    # actionable message rather than failing mid-corpus.
+    "pytesseract==0.3.13",
 ]
 
 [project.optional-dependencies]

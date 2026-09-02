@@ -41,7 +41,14 @@ def load_results(directory: Path, ablation: bool = False) -> list[dict[str, Any]
             continue
         if ("--budget" in path.name) != ablation:
             continue
-        results.append(json.loads(path.read_text(encoding="utf-8")))
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        # The same directory also holds the OCR bake-off, which scores engines
+        # rather than models and carries none of the keys below. Filtering on
+        # the payload's shape rather than on its filename keeps this correct
+        # the next time a differently-named artifact lands here.
+        if "model_name" not in payload:
+            continue
+        results.append(payload)
     return sorted(results, key=lambda r: r["model_name"] != INCUMBENT)
 
 
@@ -160,15 +167,21 @@ def _print_divergence(
 
     blockers = _cost_blockers(shipped, incumbent)
     margin = shipped["tier_b"][PRIMARY_METRIC] - incumbent["tier_b"][PRIMARY_METRIC]
+    margin_passes = margin > MARGIN_QUERIES
     print(f"- cost gates: {', '.join(blockers) if blockers else 'all three pass'}")
-    print(f"- margin gate: {margin:+d}, and more than {MARGIN_QUERIES} is required -- fails")
+    print(
+        f"- margin gate: {margin:+d}, and more than {MARGIN_QUERIES} is required -- "
+        f"{'passes' if margin_passes else 'fails'}"
+    )
+    if blockers or margin_passes:
+        return
     print(
         "\nSo the shipped configuration is not blocked by the two gates that later proved\n"
         "miscalibrated; it is blocked only by the margin gate, which was calibrated correctly.\n"
         "The switch is therefore one explicit judgement and not a rescued gate: a Tier B margin\n"
-        "of +2 is inside the noise of n=26, and the case rests on Tier A instead. That argument,\n"
-        "and the miscalibration of the other two gates, is in eval/DECISION.md and in the README\n"
-        "under 'Why this model, and how I know'."
+        f"of {margin:+d} is inside the noise of n=26, and the case rests on Tier A instead. That\n"
+        "argument, and the miscalibration of the other two gates, is in eval/DECISION.md and in\n"
+        "the README under 'Why this model, and how I know'."
     )
 
 
