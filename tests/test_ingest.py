@@ -58,7 +58,7 @@ def test_ingestion_fails_loudly_when_nothing_could_be_extracted(
     (tmp_path / "scan.pdf").write_bytes(b"%PDF-1.4\n")
     monkeypatch.setattr(
         "pdf_search.ingest.extract_pages",
-        lambda path: [
+        lambda path, ocr_engine=None: [
             PageRecord(document_name=path.name, page_number=1, status="no_text", char_count=0)
         ],
     )

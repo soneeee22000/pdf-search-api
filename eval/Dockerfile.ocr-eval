@@ -1,0 +1,28 @@
+# Both OCR candidates in one image, so they are measured in the same place.
+#
+# Tesseract needs a system package and RapidOCR does not, which is one of the
+# things being compared -- but a comparison run on two different operating
+# systems would measure the machines rather than the engines. The service image
+# itself does not contain this layer; see the root Dockerfile.
+#
+#   docker build -f eval/Dockerfile.ocr-eval -t pdf-search-ocr-eval .
+#   docker run --rm -v "$(pwd)/eval/results:/app/eval/results" \
+#       pdf-search-ocr-eval --engine tesseract
+FROM pdf-search-api:latest
+
+USER root
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-fra \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir pytesseract==0.3.13 rapidocr-onnxruntime==1.4.4
+
+COPY eval/ ./eval/
+COPY sample-pdfs/ ./sample-pdfs/
+
+RUN chown -R appuser:appuser /app/eval
+USER appuser
+
+ENV PYTHONPATH=/app/src
+ENTRYPOINT ["python", "-m", "eval.ocr_harness"]

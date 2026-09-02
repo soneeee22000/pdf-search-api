@@ -11,8 +11,11 @@ import re
 import unicodedata
 from pathlib import Path
 
+import numpy as np
 import pypdfium2
+from numpy.typing import NDArray
 
+from pdf_search.ocr import OCR_RENDER_SCALE, OcrEngine
 from pdf_search.schemas import PageRecord, PageStatus
 
 logger = logging.getLogger(__name__)
@@ -54,12 +57,16 @@ def _page_status(text: str) -> PageStatus:
     return "extracted" if len(text.replace(" ", "")) >= MIN_USABLE_CHARS else "no_text"
 
 
-def extract_pages(pdf_path: Path) -> list[PageRecord]:
+def extract_pages(pdf_path: Path, ocr_engine: OcrEngine | None = None) -> list[PageRecord]:
     """Extract one `PageRecord` per page, in reading order, 1-based.
 
     A page that cannot be read yields a record with status 'error' rather than
     aborting the document, and a document that cannot be opened yields a single
     error record rather than aborting the run.
+
+    When `ocr_engine` is given, a page that yields no text layer is rendered and
+    recognised instead of being recorded empty. Pages that did produce text are
+    never re-read, so enabling OCR cannot change any chunk that already exists.
     """
     document_name = pdf_path.name
     try:
@@ -71,13 +78,20 @@ def extract_pages(pdf_path: Path) -> list[PageRecord]:
     records: list[PageRecord] = []
     try:
         for page_number, page in enumerate(document, start=1):
-            records.append(_extract_one_page(page, document_name, page_number))
+            records.append(
+                _extract_one_page(page, document_name, page_number, ocr_engine)
+            )
     finally:
         document.close()
     return records
 
 
-def _extract_one_page(page: object, document_name: str, page_number: int) -> PageRecord:
+def _extract_one_page(
+    page: object,
+    document_name: str,
+    page_number: int,
+    ocr_engine: OcrEngine | None = None,
+) -> PageRecord:
     """Extract a single page, converting any failure into an 'error' record."""
     try:
         text_page = page.get_textpage()  # type: ignore[attr-defined]
@@ -92,10 +106,48 @@ def _extract_one_page(page: object, document_name: str, page_number: int) -> Pag
         )
 
     text = normalise(raw)
+    if _page_status(text) == "no_text" and ocr_engine is not None:
+        return _recognise_page(page, document_name, page_number, ocr_engine)
     return PageRecord(
         document_name=document_name,
         page_number=page_number,
         status=_page_status(text),
+        char_count=len(text),
+        text=text,
+    )
+
+
+def _render_for_ocr(page: object) -> NDArray[np.uint8]:
+    """Rasterise one page at the fixed OCR resolution."""
+    bitmap = page.render(scale=OCR_RENDER_SCALE)  # type: ignore[attr-defined]
+    array: NDArray[np.uint8] = bitmap.to_numpy()
+    return array[:, :, :3] if array.ndim == 3 and array.shape[2] == 4 else array
+
+
+def _recognise_page(
+    page: object, document_name: str, page_number: int, engine: OcrEngine
+) -> PageRecord:
+    """Recover a page that has no text layer, degrading to 'no_text' on failure.
+
+    A page the engine cannot read is recorded exactly as it would have been
+    without OCR. Recognition failure is a quality problem, not a corpus-level
+    one, and it must not take the document down with it.
+    """
+    empty = PageRecord(
+        document_name=document_name, page_number=page_number, status="no_text", char_count=0
+    )
+    try:
+        text = normalise(engine.extract(_render_for_ocr(page)))
+    except Exception as exc:  # noqa: BLE001 - one bad page must not stop the document
+        logger.warning("OCR failed on %s page %d: %s", document_name, page_number, exc)
+        return empty
+    if _page_status(text) == "no_text":
+        logger.warning("OCR recovered nothing usable from %s page %d", document_name, page_number)
+        return empty
+    return PageRecord(
+        document_name=document_name,
+        page_number=page_number,
+        status="ocr",
         char_count=len(text),
         text=text,
     )

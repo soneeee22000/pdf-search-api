@@ -93,6 +93,37 @@ Requiring near-perfection would fail an engine for a single mangled accent;
 requiring a bare majority would ship something that half-works. 75% says most of
 the page is recoverable without pretending the number is precise.
 
+## Amendment, 2026-09-02, before either engine was scored
+
+Two clarifications, both settled before any result existed. Neither moves the
+bar; they make an underspecified rule executable.
+
+**Fidelity matching is accent- and case-insensitive.** The rule said a gold
+string counts when it appears "after the same normalisation the ingestion
+pipeline applies". That normalisation is NFKC, which preserves accents -- but
+the gold strings in `ocr_queries.jsonl` were typed unaccented, so under a literal
+reading almost nothing could ever match. Matching therefore folds accents and
+case. It is a loosening, and it applies identically to both engines.
+
+**Fidelity is reported twice: with spaces respected, and ignoring them.** A
+recogniser whose character set has no space token emits text that a human can
+still read and that tokenises into nonsense, which is invisible to any metric
+that normalises whitespace away. Reporting only the space-insensitive number
+would conceal exactly the failure that destroys retrieval; reporting only the
+strict number would look like a formatting quibble. Both are published, and the
+rule is applied to retrievability regardless, which is unaffected by this choice.
+
+**Each engine is evaluated as it installs.** `rapidocr-onnxruntime` from pip and
+`tesseract-ocr` plus `tesseract-ocr-fra` from apt. Neither is given a
+hand-picked alternative model, because the thing being compared is what a
+reviewer would actually get from the documented install. Where a default turns
+out to be a poor fit for French, that is a finding about the candidate rather
+than a handicap to be corrected.
+
+**Both engines run in the same Linux container** (`eval/Dockerfile.ocr-eval`),
+because one needs a system package and the other does not, and a comparison
+split across two operating systems would measure the machines.
+
 ## What this evaluation is not
 
 It is not a general OCR benchmark. It is 2 pages of one clean, high-resolution

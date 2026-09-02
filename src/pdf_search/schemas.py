@@ -6,7 +6,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-PageStatus = Literal["extracted", "no_text", "error"]
+# "ocr" is kept distinct from "extracted" so the ingestion summary can say how
+# much of the corpus came from recognition rather than from a text layer --
+# recognised text is materially less trustworthy and an operator should know.
+PageStatus = Literal["extracted", "ocr", "no_text", "error"]
 
 MIN_TOP_K = 1
 MAX_TOP_K = 20
@@ -57,6 +60,10 @@ class Manifest(BaseModel):
     index_sha256: str | None = None
     metadata_sha256: str | None = None
     chunk_token_budget: int = Field(gt=0)
+    ocr_engine: str = Field(
+        default="",
+        description="OCR engine that produced any recognised pages, empty if OCR was off",
+    )
     n_documents: int = Field(ge=0)
     n_chunks: int = Field(ge=0)
     n_pages: int = Field(ge=0)

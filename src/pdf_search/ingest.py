@@ -17,10 +17,16 @@ from pathlib import Path
 from pdf_search import storage
 from pdf_search.chunking import chunk_page
 from pdf_search.embeddings import DEFAULT_MODEL_NAME, Embedder, chunk_budget_for
+from pdf_search.ocr import OcrEngine, OcrUnavailableError, available_engines, build_engine
 from pdf_search.pdf_text import discover_pdfs, extract_pages
 from pdf_search.schemas import ChunkRecord, Manifest, PageRecord
 
 logger = logging.getLogger(__name__)
+
+# A page recovered by OCR carries text like any other. Statuses are compared
+# against this rather than against 'extracted' alone, so enabling OCR moves a
+# page out of the no-text column instead of leaving it counted as a failure.
+PAGE_HAS_TEXT = ("extracted", "ocr")
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
@@ -37,6 +43,16 @@ def build_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--model", default=DEFAULT_MODEL_NAME, help="sentence-transformers model identifier"
+    )
+    parser.add_argument(
+        "--ocr",
+        default="",
+        help=(
+            "recognise pages that have no text layer: "
+            + ", ".join(available_engines())
+            + ". Off by default, because it adds a dependency and recognised text is "
+            "less trustworthy than an embedded text layer."
+        ),
     )
     parser.add_argument("--verbose", action="store_true", help="log per-document detail")
     return parser
@@ -61,16 +77,24 @@ def collect_chunks(
 
 
 def run_ingestion(
-    input_dir: Path, output_dir: Path, embedder: Embedder, budget: int | None = None
+    input_dir: Path,
+    output_dir: Path,
+    embedder: Embedder,
+    budget: int | None = None,
+    ocr_engine: OcrEngine | None = None,
 ) -> Manifest:
-    """Extract, chunk, embed and persist. Returns the manifest that was written."""
+    """Extract, chunk, embed and persist. Returns the manifest that was written.
+
+    `ocr_engine` only ever sees pages that produced no text layer, so passing one
+    cannot change a chunk that would otherwise have been produced.
+    """
     started = time.monotonic()
     pdf_paths = discover_pdfs(input_dir)
     logger.info("found %d PDF file(s) in %s", len(pdf_paths), input_dir)
 
     pages: list[PageRecord] = []
     for pdf_path in pdf_paths:
-        document_pages = extract_pages(pdf_path)
+        document_pages = extract_pages(pdf_path, ocr_engine)
         pages.extend(document_pages)
         _log_document(document_pages, pdf_path.name)
 
@@ -79,7 +103,8 @@ def run_ingestion(
     if not chunks:
         raise RuntimeError(
             "no text could be extracted from any document, so there is nothing to index. "
-            "The PDFs may be scanned images, which need OCR."
+            "The PDFs are probably scans, which need OCR: re-run with --ocr to recognise pages that have "
+            "no text layer."
         )
 
     vectors = embedder.encode_documents([chunk.text for chunk in chunks])
@@ -94,7 +119,8 @@ def run_ingestion(
         n_documents=len(pdf_paths),
         n_chunks=len(chunks),
         n_pages=len(pages),
-        n_pages_no_text=sum(1 for p in pages if p.status != "extracted"),
+        n_pages_no_text=sum(1 for p in pages if p.status not in PAGE_HAS_TEXT),
+        ocr_engine=ocr_engine.name if ocr_engine is not None else "",
         created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
         source_documents=[p.name for p in pdf_paths],
     )
@@ -135,7 +161,11 @@ def _print_summary(
     print(f"  elapsed         : {elapsed:.1f}s")
     print(f"  index written to: {output_dir}")
 
-    unusable = [p for p in pages if p.status != "extracted"]
+    recognised = [p for p in pages if p.status == "ocr"]
+    if recognised:
+        print(f"  pages via OCR   : {len(recognised)} ({manifest.ocr_engine})")
+
+    unusable = [p for p in pages if p.status not in PAGE_HAS_TEXT]
     if unusable:
         print("\n  Pages that yielded no usable text (candidates for OCR):")
         for page in unusable:
@@ -143,7 +173,7 @@ def _print_summary(
 
     empty_documents = sorted(
         {p.document_name for p in pages}
-        - {p.document_name for p in pages if p.status == "extracted"}
+        - {p.document_name for p in pages if p.status in PAGE_HAS_TEXT}
     )
     if empty_documents:
         print("\n  WARNING - these documents contributed nothing to the index:")
@@ -162,9 +192,10 @@ def main(argv: list[str] | None = None) -> int:
     from pdf_search.embeddings import SentenceTransformerEmbedder
 
     try:
+        ocr_engine = build_engine(args.ocr)
         embedder = SentenceTransformerEmbedder(args.model)
-        run_ingestion(args.input_dir, args.output_dir, embedder)
-    except (NotADirectoryError, FileNotFoundError, RuntimeError) as exc:
+        run_ingestion(args.input_dir, args.output_dir, embedder, ocr_engine=ocr_engine)
+    except (NotADirectoryError, FileNotFoundError, OcrUnavailableError, RuntimeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     return 0
