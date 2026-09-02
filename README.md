@@ -139,7 +139,7 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu   # CPU-only,
 PYTHONPATH=src python -m pdf_search.ingest --input-dir ./sample-pdfs --output-dir ./storage
 PYTHONPATH=src uvicorn pdf_search.api:app --reload
 
-PYTHONPATH=src pytest        # 78 tests, no network, no model download
+PYTHONPATH=src pytest        # 81 tests, no network, no model download
 ```
 
 ---
@@ -398,10 +398,10 @@ Held at the same 110-token budget, so the model is the only variable that moves:
 
 Every retrieval-trained model beats the suggested one on both tiers. That is the finding.
 
-**What shipped, and the honest caveat.** `multilingual-e5-small` is better on every measure and worse on
-none, and it costs essentially nothing: the same **384 dimensions**, so the index width, the storage layout
-and the code are untouched; 470 MB of weights against 458; 843 MB against 838 MB of peak RSS; and
-ingestion within a few seconds of the incumbent's. Re-ingesting produced 387 chunks whose text, page and
+**What shipped, and the honest caveat.** `multilingual-e5-small` wins every *quality* column and loses
+none, and what it costs to get that is marginal rather than nothing: the same **384 dimensions**, so the
+index width, the storage layout and the code are untouched, but 470 MB of weights against 458, 843 MB
+against 838 MB of peak RSS, and ingestion a few seconds slower. Re-ingesting produced 387 chunks whose text, page and
 document are **identical** to the previous model's, because both use the XLM-R tokenizer and the budget did
 not move.
 
@@ -610,9 +610,12 @@ Run on the seven PDFs provided with the exercise:
 
 | Documents | Pages | Pages with text | Pages with no text | Chunks | Characters | Ingestion |
 | --------- | ----- | --------------- | ------------------ | ------ | ---------- | --------- |
-| 7         | 64    | 62              | 2                  | 387    | 136,580    | 15.4 s    |
+| 7         | 64    | 62              | 2                  | 387    | 136,580    | ~15 s     |
 
-These figures come from the local run (`python -m pdf_search.ingest`). The Docker path invokes the same
+Every column except the last is exact and reproduces on re-ingestion. Ingestion wall-clock does not — see
+[what reproduces, and what does not](#why-this-model-and-how-i-know) — so it is given to the nearest few
+seconds and no argument here rests on it. These figures come from the local run
+(`python -m pdf_search.ingest`). The Docker path invokes the same
 entry point over the same corpus, so it produces the same index — ingestion is deterministic and nothing in
 it depends on the container.
 
@@ -810,7 +813,7 @@ pdf-search-api/
 PYTHONPATH=src pytest
 ```
 
-78 tests, running in under two seconds with **no network access and no model download** — the embedder and
+81 tests, running in under two seconds with **no network access and no model download** — the embedder and
 the token counter are both injected, and the API fixtures replace the startup builder before the application
 starts rather than after, so no test touches a real model or a real index directory. They cover the token
 budget including the overlap case that used to breach it, word-level text conservation, page attribution,
