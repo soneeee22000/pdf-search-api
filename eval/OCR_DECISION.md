@@ -124,6 +124,69 @@ than a handicap to be corrected.
 because one needs a system package and the other does not, and a comparison
 split across two operating systems would measure the machines.
 
+## Result, 2026-09-02, after the runs
+
+Both engines ran in the same container against the same 16 gold strings.
+
+| | none | tesseract | rapidocr |
+| --- | ---- | --------- | -------- |
+| Fidelity, strict | 0/16 | **15/16** | **1/16** |
+| Fidelity, ignoring spaces | 0/16 | 15/16 | 14/16 |
+| Gold string retrievable @5 | 0/16 | **16/16** | 14/16 |
+| Paraphrased question @5 | 0/16 | **11/16** | 5/16 |
+| Chunks | 387 | 418 | 413 |
+| Extraction | 1.6 s | 12.5 s | 42.3 s |
+| Ingestion | 24.6 s | 25.8 s | 37.4 s |
+
+**Reporting fidelity twice was worth it.** RapidOCR scores 1/16 strict and 14/16 ignoring spaces. That
+13-point gap is a single defect isolated: its recognition model's character set contains **no space token**,
+so it emits `ARRETEDENON-OPPOSITIONAUNEDECLARATIONPREALABLE`. Only the strict number sees it, and the cost is
+visible on the paraphrased tier, where damaged tokenisation halves the score — 5/16 against 11/16.
+
+**RapidOCR was a candidate because it needed no system package. That was false twice.** Its bundled
+recogniser is `ch_PP-OCRv4_rec`, a Chinese model: 6,623 dictionary entries, only `é è à` of the French
+accents, no space. And it will not start in a slim image at all — `libGL.so.1: cannot open shared object
+file`, because it depends on opencv-python. It needs `libgl1` and `libglib2.0-0`, so both candidates need an
+apt layer.
+
+**That voids my own tie-break.** The rule says that if two engines finish within 2 gold strings, the one with
+no system dependency wins. Tesseract 16 and RapidOCR 14 are exactly 2 apart, so the clause fires — and it
+would have selected RapidOCR, on a premise that turns out not to hold. Had the engines only ever been run on
+a developer machine with the libraries already present, the tie-break would have chosen the weaker engine for
+a reason that does not exist.
+
+## Verdict: ship tesseract, and the clause it fails
+
+| Gate | Threshold | tesseract |
+| ---- | --------- | --------- |
+| Gold strings retrievable @5 | >= 12 of 16 | 16/16 pass |
+| Added image size | <= 300 MB | 118 MB pass |
+| Added ingestion | <= 60 s | +1.3 s pass |
+| 387 existing chunks byte-identical | required | pass |
+| OCR touches only text-less pages | required | pass |
+| Every labelled query returns what it returned | required | **fail** |
+
+**The additivity clause fails, and it is the clause that is wrong.** Tier B falls 16/26 to 15/26. Exactly
+**one of 52** labelled queries crosses k=5: *"Quel dégagement minimum doit rester praticable à pied le long
+du chantier ?"* drops from rank 5 to rank 6, displaced at rank 1 by the newly recognised page 2 of the
+planning permission — the paragraph requiring a panel over 80 centimetres, visible from the public way, for
+the duration of the *chantier*. It shares the worksite, the public way and a measurement in centimetres with
+the question. It is a topically adjacent near miss made of correctly recognised text, not noise. Five other
+queries move by one position without crossing the threshold.
+
+Requiring that *every* query return exactly what it returned before is **unsatisfiable by any additive
+change**: content added to a corpus competes for ranking. As drafted the clause forbids indexing anything
+new, which is a defect in the rule rather than a finding about OCR. What the clause was written to protect —
+that OCR must not corrupt the existing corpus — is separately satisfied and measured: the 387 pre-existing
+chunks are byte-identical by sha256, and OCR only ever saw pages that yielded no text.
+
+So the trade is one document going from **invisible at any k** to 16/16 of its gold strings retrievable,
+against one existing query moving from rank 5 to rank 6. That is worth taking, and it is a judgement rather
+than the rule's verdict. The rule is published as it fell, and not rewritten to agree with the outcome.
+
+**Tesseract ships. OCR stays opt-in** (`--ocr tesseract`), because recognised text is less trustworthy than
+an embedded text layer and the caller should choose to accept it.
+
 ## What this evaluation is not
 
 It is not a general OCR benchmark. It is 2 pages of one clean, high-resolution

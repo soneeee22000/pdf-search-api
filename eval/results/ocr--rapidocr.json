@@ -1,0 +1,16 @@
+{
+  "engine": "rapidocr",
+  "n_gold": 16,
+  "fidelity_strict": 1,
+  "fidelity_ignoring_spaces": 14,
+  "retrieval_string_hits@5": 14,
+  "retrieval_question_hits@5": 5,
+  "median_rank_when_found": 1,
+  "n_chunks": 413,
+  "extraction_seconds": 42.28,
+  "ingestion_seconds": 37.36,
+  "pre_existing_chunks": 387,
+  "pre_existing_chunks_sha256": "7eccec38eb429da2c458a31be487aab56ba2e472cbc5f3f873917134fd1276eb",
+  "embedding_tier_a_hits@5": 26,
+  "embedding_tier_b_hits@5": 15
+}

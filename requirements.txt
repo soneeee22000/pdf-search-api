@@ -8,3 +8,8 @@ pypdfium2==5.13.0
 faiss-cpu==1.15.0
 numpy==2.2.6
 sentence-transformers==5.7.0
+
+# OCR for pages with no text layer, chosen by the bake-off in eval/OCR_DECISION.md.
+# The Python package is a thin wrapper: the tesseract binary and its French data
+# are installed separately, by apt in the Dockerfile.
+pytesseract==0.3.13

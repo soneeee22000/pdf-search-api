@@ -74,6 +74,9 @@ docker run --rm \
 # 4. Verify the index was created
 ls storage/            # index.faiss  metadata.jsonl  manifest.json
 
+# Optional: one of the seven documents is a scan with no text layer. Add --ocr
+# tesseract to step 3 to recognise it -- 387 chunks becomes 418. See below.
+
 # 5. Serve
 docker run --rm -p 8000:8000 \
   -v "$(pwd)/storage:/storage:ro" \
@@ -348,7 +351,8 @@ against a hypothetical corpus.
 | `260520_TABLEAU_DELIBERATIONS_SIGNE.pdf` | 2.1 % · 10 chunks · 2 pp        | Signed table of resolutions, Pluherlin                 | Linearised table: the header row that gives every other row its meaning ends up far from them |
 | `AFF-2026.06.11-DP-…ACCORD.pdf`          | **0 %** · 0 chunks · 2 pp       | Stamped planning permission notice                     | **No text layer at all.** Scanned image. Ingested, counted, named — and contributes nothing   |
 
-So of seven documents ingested, **six are retrievable**. The seventh is the OCR case, and the
+So of seven documents ingested, **six are retrievable by default and all seven with `--ocr tesseract`**
+(see [the scanned document](#the-scanned-document-and-whether-to-ocr-it)). The seventh is the OCR case, and the
 ingestion summary names it explicitly rather than reporting a clean run over a document it silently
 dropped.
 
@@ -360,6 +364,61 @@ and both hurt dense retrieval in ways described in
 ---
 
 ## Design decisions
+
+### The scanned document, and whether to OCR it
+
+One of the seven supplied documents has **no text layer on either page**. `pypdfium2` extracts nothing, so
+it produces no chunks, so it is unretrievable at any *k* — and no embedding model can change that, because
+the content never reaches the index. That is why the ingestion summary names it rather than counting it
+silently.
+
+`pdf_text` is one of the seams named above, so an OCR extractor drops in behind it. Whether one *should*
+was decided the same way the model was: a rule pre-registered in [`eval/OCR_DECISION.md`](eval/OCR_DECISION.md)
+before either candidate ran, 16 strings read off the two scanned pages by eye, and two metrics.
+
+| | none | **tesseract** | rapidocr |
+| --- | ---- | ------------- | -------- |
+| Fidelity, strict | 0/16 | **15/16** | **1/16** |
+| Fidelity, ignoring spaces | 0/16 | 15/16 | 14/16 |
+| Gold string retrievable @5 | 0/16 | **16/16** | 14/16 |
+| Paraphrased question @5 | 0/16 | **11/16** | 5/16 |
+| Extraction | 1.6 s | 12.5 s | 42.3 s |
+
+**Fidelity is reported twice because one number hides the defect.** RapidOCR scores 1/16 strict and 14/16
+ignoring spaces. The 13-point gap is one thing: its recognition model's character set has **no space token**,
+so it emits `ARRETEDENON-OPPOSITIONAUNEDECLARATIONPREALABLE`. A human reads that; a tokeniser does not, which
+is why its paraphrased-question score is half Tesseract's. A single space-normalised metric would have scored
+it 14/16 and called it competitive.
+
+**The candidate chosen for having no system dependency turned out to need two.** `rapidocr-onnxruntime` was
+attractive because it installs by pip. But it ships `ch_PP-OCRv4_rec`, a *Chinese* recogniser — 6,623
+dictionary entries, only `é è à` of the French accents — and it will not start in a slim image at all
+(`libGL.so.1: cannot open shared object file`, via opencv-python). My own tie-break said that two engines
+within 2 gold strings should be settled by preferring the one with no system dependency; Tesseract's 16 and
+RapidOCR's 14 are exactly 2 apart, so that clause fired and pointed at RapidOCR — on a premise that is not
+true. Running it in the target container is the only reason that was caught.
+
+**What OCR costs, stated as a trade rather than a win.** Tier B on the *existing* labelled set falls 16/26 to
+15/26. Exactly **one of 52** labelled queries crosses k=5: a question about the minimum walkable clearance
+alongside a worksite drops from rank 5 to rank 6, displaced by the newly recognised page requiring a panel
+over 80 cm visible from the public way for the duration of the *chantier*. That is a topically adjacent near
+miss made of correctly recognised text, not noise — a new document competing, which is what adding content to
+a 387-chunk corpus does. The 387 pre-existing chunks are **byte-identical** by sha256 either way, and OCR only
+ever sees pages that yielded no text.
+
+So the trade is one document going from invisible at any *k* to 16/16 of its gold strings retrievable, against
+one existing query moving one rank. Worth taking — but it is a judgement, and the pre-registered rule as
+written says the additivity clause **fails**, because requiring every query to return exactly what it returned
+before is unsatisfiable by any additive change. That is a defect in my rule, not a finding about OCR, and
+`eval/OCR_DECISION.md` publishes it as it fell rather than rewriting it to agree.
+
+**OCR is opt-in.** The engine is in the image (118 MB), the flag is `--ocr tesseract`, and the default is off,
+because recognised text is less trustworthy than an embedded text layer and the caller should choose to accept
+it. With it, all **seven** documents are retrievable and the corpus is 418 chunks; without it, six and 387.
+The ingestion summary reports `pages via OCR` separately from `pages with text`, and the manifest records
+which engine produced them.
+
+---
 
 ### Why this model, and how I know
 

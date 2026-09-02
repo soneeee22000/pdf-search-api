@@ -1,18 +1,18 @@
 {
-  "engine": "none",
+  "engine": "tesseract",
   "n_gold": 16,
-  "fidelity_strict": 0,
-  "fidelity_ignoring_spaces": 0,
-  "retrieval_string_hits@5": 0,
-  "retrieval_question_hits@5": 0,
-  "median_rank_when_found": null,
-  "n_chunks": 387,
-  "extraction_seconds": 0.87,
-  "ingestion_seconds": 17.32,
+  "fidelity_strict": 15,
+  "fidelity_ignoring_spaces": 15,
+  "retrieval_string_hits@5": 16,
+  "retrieval_question_hits@5": 11,
+  "median_rank_when_found": 1.0,
+  "n_chunks": 418,
+  "extraction_seconds": 9.64,
+  "ingestion_seconds": 30.06,
   "pre_existing_chunks": 387,
   "pre_existing_chunks_sha256": "7eccec38eb429da2c458a31be487aab56ba2e472cbc5f3f873917134fd1276eb",
   "embedding_tier_a_hits@5": 26,
-  "embedding_tier_b_hits@5": 16,
+  "embedding_tier_b_hits@5": 15,
   "embedding_ranks": [
     {
       "tier": "A",
@@ -61,9 +61,9 @@
       "top5": [
         "d132664843659300_5271.pdf#8",
         "d132664843659300_5271.pdf#8",
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#2",
         "d132664843659300_5271.pdf#27",
-        "d132664843659300_5271.pdf#25",
-        "d132664843659300_5271.pdf#14"
+        "d132664843659300_5271.pdf#25"
       ]
     },
     {
@@ -109,13 +109,13 @@
       "tier": "B",
       "query": "Combien la commune reclame-t-elle au distributeur de gaz naturel pour l'occupation de son domaine public en 2026, contre quel montant l'annee precedente ?",
       "gold": "d132664843659300_5271.pdf#12",
-      "rank": 6,
+      "rank": 7,
       "top5": [
         "Ordre_du_jour_18-06-2026.pdf#2",
         "d132664843659300_5271.pdf#27",
         "d132664843659300_5271.pdf#3",
         "d132664843659300_5271.pdf#4",
-        "260520_TABLEAU_DELIBERATIONS_SIGNE.pdf#1"
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#1"
       ]
     },
     {
@@ -125,10 +125,10 @@
       "rank": 1,
       "top5": [
         "d132664843659300_5271.pdf#15",
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#2",
         "d132664843659300_5271.pdf#22",
         "d132664843659300_5271.pdf#5",
-        "d132664843659300_5271.pdf#6",
-        "Ordre_du_jour_18-06-2026.pdf#1"
+        "d132664843659300_5271.pdf#6"
       ]
     },
     {
@@ -256,9 +256,9 @@
       "top5": [
         "d132664843659300_5271.pdf#43",
         "d132664843659300_5271.pdf#47",
-        "159687_Projet+de+convention+de+mecenat+financier_BOYER+GESTION-2026+04+28+1.pdf#3",
-        "AW Solutions - Dématérialisation des appels d_offres et marchés publics.pdf#2",
-        "AW Solutions - Dématérialisation des appels d_offres et marchés publics.pdf#2"
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#2",
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#2",
+        "159687_Projet+de+convention+de+mecenat+financier_BOYER+GESTION-2026+04+28+1.pdf#3"
       ]
     },
     {
@@ -278,13 +278,13 @@
       "tier": "A",
       "query": "N° de licence d'entrepreneur de spectacles vivants",
       "gold": "159687_Projet+de+convention+de+mecenat+financier_BOYER+GESTION-2026+04+28+1.pdf#1",
-      "rank": 1,
+      "rank": 2,
       "top5": [
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#2",
         "159687_Projet+de+convention+de+mecenat+financier_BOYER+GESTION-2026+04+28+1.pdf#1",
         "159687_Projet+de+convention+de+mecenat+financier_BOYER+GESTION-2026+04+28+1.pdf#3",
         "Ordre_du_jour_18-06-2026.pdf#1",
-        "d132664843659300_5271.pdf#38",
-        "d132664843659300_5271.pdf#41"
+        "d132664843659300_5271.pdf#38"
       ]
     },
     {
@@ -334,9 +334,9 @@
       "top5": [
         "159687_Projet+de+convention+de+mecenat+financier_BOYER+GESTION-2026+04+28+1.pdf#3",
         "d132664843659300_5271.pdf#5",
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#2",
         "d132664843659300_5271.pdf#28",
-        "159687_Projet+de+convention+de+mecenat+financier_BOYER+GESTION-2026+04+28+1.pdf#3",
-        "d132664843659300_5271.pdf#22"
+        "159687_Projet+de+convention+de+mecenat+financier_BOYER+GESTION-2026+04+28+1.pdf#3"
       ]
     },
     {
@@ -359,23 +359,23 @@
       "rank": 1,
       "top5": [
         "159687_Projet+de+convention+de+mecenat+financier_BOYER+GESTION-2026+04+28+1.pdf#4",
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#2",
         "159687_Projet+de+convention+de+mecenat+financier_BOYER+GESTION-2026+04+28+1.pdf#3",
         "d132664843659300_5271.pdf#6",
-        "d132664843659300_5271.pdf#7",
-        "159687_Projet+de+convention+de+mecenat+financier_BOYER+GESTION-2026+04+28+1.pdf#4"
+        "d132664843659300_5271.pdf#7"
       ]
     },
     {
       "tier": "B",
       "query": "Que devient l'accord lorsqu'une partie manque à ses engagements et ignore la sommation écrite qui lui est envoyée ?",
       "gold": "159687_Projet+de+convention+de+mecenat+financier_BOYER+GESTION-2026+04+28+1.pdf#4",
-      "rank": 4,
+      "rank": 5,
       "top5": [
         "AW Solutions - Dématérialisation des appels d_offres et marchés publics.pdf#2",
         "AW Solutions - Dématérialisation des appels d_offres et marchés publics.pdf#1",
         "d132664843659300_5271.pdf#25",
-        "159687_Projet+de+convention+de+mecenat+financier_BOYER+GESTION-2026+04+28+1.pdf#4",
-        "d132664843659300_5271.pdf#8"
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#2",
+        "159687_Projet+de+convention+de+mecenat+financier_BOYER+GESTION-2026+04+28+1.pdf#4"
       ]
     },
     {
@@ -386,9 +386,9 @@
       "top5": [
         "159687_Projet+de+convention+de+mecenat+financier_BOYER+GESTION-2026+04+28+1.pdf#6",
         "159687_Projet+de+convention+de+mecenat+financier_BOYER+GESTION-2026+04+28+1.pdf#6",
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#1",
         "260520_TABLEAU_DELIBERATIONS_SIGNE.pdf#1",
-        "d132664843659300_5271.pdf#1",
-        "260520_TABLEAU_DELIBERATIONS_SIGNE.pdf#2"
+        "d132664843659300_5271.pdf#1"
       ]
     },
     {
@@ -460,13 +460,13 @@
       "tier": "A",
       "query": "Conventions avec l'OGEC pour la mise",
       "gold": "260520_TABLEAU_DELIBERATIONS_SIGNE.pdf#2",
-      "rank": 1,
+      "rank": 2,
       "top5": [
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#2",
         "260520_TABLEAU_DELIBERATIONS_SIGNE.pdf#2",
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#1",
         "159687_Projet+de+convention+de+mecenat+financier_BOYER+GESTION-2026+04+28+1.pdf#3",
-        "d132664843659300_5271.pdf#9",
-        "d132664843659300_5271.pdf#35",
-        "d132664843659300_5271.pdf#31"
+        "d132664843659300_5271.pdf#9"
       ]
     },
     {
@@ -489,10 +489,10 @@
       "rank": 1,
       "top5": [
         "Ordre_du_jour_18-06-2026.pdf#1",
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#1",
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#2",
         "Ordre_du_jour_18-06-2026.pdf#2",
-        "Ordre_du_jour_18-06-2026.pdf#1",
-        "159687_Projet+de+convention+de+mecenat+financier_BOYER+GESTION-2026+04+28+1.pdf#3",
-        "d132664843659300_5271.pdf#35"
+        "Ordre_du_jour_18-06-2026.pdf#1"
       ]
     },
     {
@@ -518,7 +518,7 @@
         "Ordre_du_jour_18-06-2026.pdf#2",
         "d132664843659300_5271.pdf#41",
         "Ordre_du_jour_18-06-2026.pdf#2",
-        "159687_Projet+de+convention+de+mecenat+financier_BOYER+GESTION-2026+04+28+1.pdf#5"
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#1"
       ]
     },
     {
@@ -542,9 +542,9 @@
       "top5": [
         "Ordre_du_jour_18-06-2026.pdf#2",
         "159687_Projet+de+convention+de+mecenat+financier_BOYER+GESTION-2026+04+28+1.pdf#3",
-        "d132664843659300_5271.pdf#12",
-        "d132664843659300_5271.pdf#6",
-        "d132664843659300_5271.pdf#33"
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#2",
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#1",
+        "d132664843659300_5271.pdf#12"
       ]
     },
     {
@@ -567,23 +567,23 @@
       "rank": 1,
       "top5": [
         "d235546020071500_9622.pdf#1",
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#2",
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#1",
         "d132664843659300_5271.pdf#1",
-        "d132664843659300_5271.pdf#20",
-        "d132664843659300_5271.pdf#30",
-        "d132664843659300_5271.pdf#25"
+        "d132664843659300_5271.pdf#20"
       ]
     },
     {
       "tier": "B",
       "query": "En quel lieu précis, exprimé en latitude et longitude, ce chantier doit-il se dérouler ?",
       "gold": "d235546020071500_9622.pdf#1",
-      "rank": 1,
+      "rank": 2,
       "top5": [
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#2",
         "d235546020071500_9622.pdf#1",
         "d132664843659300_5271.pdf#27",
         "d235546020071500_9622.pdf#1",
-        "d132664843659300_5271.pdf#24",
-        "d132664843659300_5271.pdf#23"
+        "d132664843659300_5271.pdf#24"
       ]
     },
     {
@@ -593,10 +593,10 @@
       "rank": 1,
       "top5": [
         "d235546020071500_9622.pdf#1",
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#2",
         "d132664843659300_5271.pdf#23",
         "d132664843659300_5271.pdf#24",
-        "d132664843659300_5271.pdf#25",
-        "d132664843659300_5271.pdf#31"
+        "d132664843659300_5271.pdf#25"
       ]
     },
     {
@@ -622,20 +622,20 @@
         "d132664843659300_5271.pdf#26",
         "d132664843659300_5271.pdf#6",
         "d132664843659300_5271.pdf#26",
-        "d132664843659300_5271.pdf#27"
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#1"
       ]
     },
     {
       "tier": "B",
       "query": "Quel dégagement minimum doit rester praticable à pied le long du chantier ?",
       "gold": "d235546020071500_9622.pdf#2",
-      "rank": 5,
+      "rank": 6,
       "top5": [
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#2",
         "d132664843659300_5271.pdf#14",
         "d132664843659300_5271.pdf#14",
         "d235546020071500_9622.pdf#1",
-        "d132664843659300_5271.pdf#13",
-        "d235546020071500_9622.pdf#2"
+        "d132664843659300_5271.pdf#13"
       ]
     },
     {
@@ -672,9 +672,9 @@
       "top5": [
         "AW Solutions - Dématérialisation des appels d_offres et marchés publics.pdf#2",
         "AW Solutions - Dématérialisation des appels d_offres et marchés publics.pdf#1",
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#1",
         "d132664843659300_5271.pdf#12",
-        "d132664843659300_5271.pdf#4",
-        "d132664843659300_5271.pdf#25"
+        "d132664843659300_5271.pdf#4"
       ]
     },
     {
@@ -685,9 +685,9 @@
       "top5": [
         "AW Solutions - Dématérialisation des appels d_offres et marchés publics.pdf#2",
         "AW Solutions - Dématérialisation des appels d_offres et marchés publics.pdf#1",
-        "AW Solutions - Dématérialisation des appels d_offres et marchés publics.pdf#2",
-        "d132664843659300_5271.pdf#27",
-        "159687_Projet+de+convention+de+mecenat+financier_BOYER+GESTION-2026+04+28+1.pdf#3"
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#2",
+        "AFF-2026.06.11-DP-26A0019-19-PLACE-DES-HAUTS-TAILLIS-ACCORD.pdf#1",
+        "AW Solutions - Dématérialisation des appels d_offres et marchés publics.pdf#2"
       ]
     }
   ]

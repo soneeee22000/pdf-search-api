@@ -162,17 +162,30 @@ def _existing_corpus_unchanged(
     digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     hits = {"A": 0, "B": 0}
+    ranks: list[dict[str, Any]] = []
     for query in load_embedding_queries(Path("eval/queries.jsonl")):
         results = loaded.search(embedder.encode_query(query.query), SEARCH_TOP_K)
         rank = embedding_rank(results, query)
         if rank is not None and rank <= PRIMARY_K:
             hits[query.tier] += 1
+        ranks.append(
+            {
+                "tier": query.tier,
+                "query": query.query,
+                "gold": f"{query.document_name}#{query.gold_page}",
+                "rank": rank,
+                # What sits in the top 5, so a displaced gold page can be explained
+                # rather than merely counted.
+                "top5": [f"{r.document_name}#{r.page_number}" for r in results[:PRIMARY_K]],
+            }
+        )
 
     return {
         "pre_existing_chunks": sum(1 for c in loaded.chunks if c.document_name != scanned_document),
         "pre_existing_chunks_sha256": digest,
         "embedding_tier_a_hits@5": hits["A"],
         "embedding_tier_b_hits@5": hits["B"],
+        "embedding_ranks": ranks,
     }
 
 

@@ -11,6 +11,12 @@ ENV PYTHONUNBUFFERED=1 \
     HF_HOME=/opt/models \
     PDF_SEARCH_STORAGE_DIR=/storage
 
+# Tesseract and its French language data, for pages that have no text layer.
+# Chosen over rapidocr-onnxruntime by measurement, not preference: see
+# eval/OCR_DECISION.md. Adds 118 MB. OCR stays opt-in at the CLI -- installing
+# the engine is not the same as trusting its output by default.
+RUN apt-get update  && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-fra  && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Dependencies before source, so editing code does not invalidate this layer.
