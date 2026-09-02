@@ -56,6 +56,23 @@ def _save(tmp_path: Path, fake_embedder) -> Path:
     return out
 
 
+def test_snapshot_bytes_do_not_depend_on_the_host_platform(
+    tmp_path: Path, fake_embedder
+) -> None:
+    """No CR anywhere in the text files, on any operating system.
+
+    The manifest records a sha256 over metadata.jsonl. If Python is left to
+    translate newlines, that digest differs between a Windows host and a Linux
+    container for the same corpus and the same model, and two snapshots that
+    are in every meaningful sense the same stop comparing equal.
+    """
+    out = _save(tmp_path, fake_embedder)
+
+    for filename in ("metadata.jsonl", "manifest.json"):
+        raw = (out / filename).read_bytes()
+        assert b"\r" not in raw, f"{filename} carries a platform newline"
+
+
 def test_round_trip_preserves_metadata(tmp_path: Path, fake_embedder) -> None:
     """Save then load returns the same chunks in the same order."""
     loaded = storage.load(_save(tmp_path, fake_embedder))

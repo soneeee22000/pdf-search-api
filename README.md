@@ -617,8 +617,17 @@ Every column except the last is exact and reproduces on re-ingestion. Ingestion 
 [what reproduces, and what does not](#why-this-model-and-how-i-know) — so it is given to the nearest few
 seconds and no argument here rests on it. These figures come from the local run
 (`python -m pdf_search.ingest`). The Docker path invokes the same
-entry point over the same corpus, so it produces the same index — ingestion is deterministic and nothing in
-it depends on the container.
+entry point over the same corpus, and the two were compared rather than assumed: the container produces the
+same 387 chunks with a **byte-identical `metadata.jsonl`**, and vectors agreeing with the host's to within
+float32 rounding — maximum absolute difference **7.8e-08**, per-vector cosine **>= 0.9999998**. That residue
+is the BLAS kernel differing between a Windows host and a Linux container, not the pipeline, and it sits far
+below any distance that could reorder a result.
+
+Getting `metadata.jsonl` to that point took a fix. Python was translating the record separator to CRLF on
+Windows, so the file's bytes — and the sha256 the manifest seals them with — depended on the operating
+system that built the snapshot: two indexes identical in every way that matters did not compare equal.
+`storage.py` now writes both text files with an explicit newline, and a test asserts no CR survives in
+either.
 
 Observations from that run, all matching the limitations described below:
 

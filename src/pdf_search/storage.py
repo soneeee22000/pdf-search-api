@@ -112,7 +112,12 @@ def save(
     staging.mkdir()
 
     faiss.write_index(index, str(staging / INDEX_FILENAME))
-    with (staging / METADATA_FILENAME).open("w", encoding="utf-8") as handle:
+    # newline="" so the separator stays the one written below on every platform.
+    # Without it Windows translates each to CRLF, so the file's bytes -- and the
+    # sha256 the manifest records for them -- depend on the host OS, and two
+    # snapshots built from one corpus by one model stop comparing equal across
+    # machines. The container build is what surfaced this.
+    with (staging / METADATA_FILENAME).open("w", encoding="utf-8", newline="") as handle:
         for chunk in chunks:
             handle.write(chunk.model_dump_json() + "\n")
     sealed = manifest.model_copy(
@@ -121,7 +126,9 @@ def save(
             "metadata_sha256": _digest(staging / METADATA_FILENAME),
         }
     )
-    (staging / MANIFEST_FILENAME).write_text(sealed.model_dump_json(indent=2), encoding="utf-8")
+    (staging / MANIFEST_FILENAME).write_text(
+        sealed.model_dump_json(indent=2), encoding="utf-8", newline=""
+    )
 
     _validate(staging)
 
