@@ -17,6 +17,9 @@ INCUMBENT = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 # Thresholds, pre-registered in DECISION.md. Do not tune these to a result.
 PRIMARY_METRIC = "hits@5"
 MARGIN_QUERIES = 2
+
+# What src/pdf_search/embeddings.py actually defaults to.
+SHIPPED_MODEL = "intfloat/multilingual-e5-small"
 MAX_INGEST_RATIO = 2.0
 MAX_RSS_RATIO = 2.0
 MAX_MODEL_BYTES = 1.5 * 1024**3
@@ -130,6 +133,45 @@ def _cost_blockers(row: dict[str, Any], incumbent: dict[str, Any]) -> list[str]:
     return blockers
 
 
+def _print_divergence(
+    verdict: str, results: list[dict[str, Any]], ablation: list[dict[str, Any]]
+) -> None:
+    """Say so when the shipped model is not the one this rule returns.
+
+    The rule runs as pre-registered and its verdict is never adjusted to match
+    what shipped. But the rule scores each model at its own window-derived
+    budget, and the shipped model runs at a measured 110, so the row it judges
+    is not the row that ships. Rather than ask the reader to take the override
+    on trust, the same gates are applied to the shipped configuration here.
+    """
+    if SHIPPED_MODEL in verdict:
+        return
+    print("\n## The rule against the shipped configuration\n")
+    print(
+        f"The model that ships is `{SHIPPED_MODEL}` at a measured budget of 110, not the\n"
+        "window-derived 494 the sweep above scores it at. Applying the same gates to that row:\n"
+    )
+
+    incumbent = next((r for r in results if r["model_name"] == INCUMBENT), None)
+    shipped = next((r for r in ablation if r["model_name"] == SHIPPED_MODEL), None)
+    if incumbent is None or shipped is None:
+        print("- the shipped configuration was not evaluated, so the gates cannot be applied")
+        return
+
+    blockers = _cost_blockers(shipped, incumbent)
+    margin = shipped["tier_b"][PRIMARY_METRIC] - incumbent["tier_b"][PRIMARY_METRIC]
+    print(f"- cost gates: {', '.join(blockers) if blockers else 'all three pass'}")
+    print(f"- margin gate: {margin:+d}, and more than {MARGIN_QUERIES} is required -- fails")
+    print(
+        "\nSo the shipped configuration is not blocked by the two gates that later proved\n"
+        "miscalibrated; it is blocked only by the margin gate, which was calibrated correctly.\n"
+        "The switch is therefore one explicit judgement and not a rescued gate: a Tier B margin\n"
+        "of +2 is inside the noise of n=26, and the case rests on Tier A instead. That argument,\n"
+        "and the miscalibration of the other two gates, is in eval/DECISION.md and in the README\n"
+        "under 'Why this model, and how I know'."
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     """Print the two tables and the mechanically-applied verdict."""
     parser = argparse.ArgumentParser(description="Compare evaluated models.")
@@ -160,6 +202,7 @@ def main(argv: list[str] | None = None) -> int:
     for line in reasoning:
         print(f"- {line}")
     print(f"\n**{verdict}**")
+    _print_divergence(verdict, results, ablation)
     return 0
 
 

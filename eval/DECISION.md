@@ -129,6 +129,41 @@ incumbent, `multilingual-e5-small`, `multilingual-e5-base` and
 Confirmed on load: e5-small is **384-d with a 512-token window**, e5-base is
 768-d/512, Solon-base is 768-d/512.
 
+## Amendment, 2026-09-02, written after the results and not folded into the rule
+
+The rule above is left exactly as it was pre-registered. What follows is what
+running it taught, recorded here so that the disagreement between the rule's
+verdict and the shipped model is on the record rather than in the telling.
+
+**Run as written, the rule returns KEEP THE INCUMBENT.** Every candidate breached
+a cost gate at the budget its own window earns.
+
+**Two of the three cost gates were badly specified, and only the results showed
+it.** The ingestion gate was a *ratio* against a roughly 15-second batch over
+seven documents; re-running the sweep found that same wall-clock varies by tens
+of percent between sessions on one machine, which is more than the gate's own
+resolution. It should have been an absolute ceiling. The peak-RSS gate compared
+totals, and those totals are dominated by the torch runtime every candidate
+shares; it turned out to track chunk size rather than model, measuring 1708 MB
+for e5-small at a 494-token budget against 843 MB for the same model at 110.
+
+**That is not, however, why the shipped model was rejected.** The rule scores
+each model at its window-derived budget. `multilingual-e5-small` ships at a
+*measured* budget of 110, so the row the rule judged is not the row that ships.
+Applying the same gates to the row that does ship: it clears ingestion, RSS and
+weights, and fails only the margin gate, at +2 where more than +2 is required.
+
+So the override rests on the one gate that was calibrated correctly, and it is a
+judgement rather than a repaired measurement: the Tier B margin is inside this
+set's noise, and the case for switching is Tier A (26/26 against 20/26), both
+tiers agreeing in direction, and the prior that a retrieval-trained model should
+beat a paraphrase-distilled one at retrieval. `eval/report.py` prints this
+comparison directly beneath its verdict.
+
+**What reproduced.** All seven evaluations were re-run from a clean state. Every
+retrieval figure reproduced exactly, and peak RSS to within 1%. Ingestion
+wall-clock did not, which is the finding that condemns the ingestion gate.
+
 ## What this evaluation is not
 
 - It is **not** a benchmark. It is one corpus, ~25 queries, and the phrasings are

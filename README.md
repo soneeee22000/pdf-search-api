@@ -62,8 +62,8 @@ it finds passages, it does not write answers, so it cannot invent one.
 # 1. Build
 docker build -t pdf-search-api .
 
-# 2. Put the PDFs somewhere local
-mkdir -p sample-pdfs && cp /path/to/*.pdf sample-pdfs/
+# 2. The seven supplied PDFs are already in sample-pdfs/ -- or point step 3 at any folder
+ls sample-pdfs/        # 7 files
 
 # 3. Ingest — the PDF folder path is the command-line argument
 docker run --rm \
@@ -391,18 +391,19 @@ Held at the same 110-token budget, so the model is the only variable that moves:
 
 | Model | Camp | Tier A r@5 | Tier B r@5 | Tier B MRR@10 | Ingest | Weights |
 | ----- | ---- | ---------- | ---------- | ------------- | ------ | ------- |
-| `paraphrase-multilingual-MiniLM-L12-v2` — *suggested* | paraphrase / STS | 20/26 | 14/26 | 0.407 | 14.4 s | 458 MB |
-| **`multilingual-e5-small`** — *shipped* | retrieval | **26/26** | **16/26** | 0.437 | 15.0 s | 470 MB |
-| `multilingual-e5-base` | retrieval | 25/26 | 18/26 | 0.561 | 48.9 s | 1082 MB |
-| `Solon-embeddings-base-0.1` | retrieval, French | 26/26 | **22/26** | **0.723** | 76.4 s | 1082 MB |
+| `paraphrase-multilingual-MiniLM-L12-v2` — *suggested* | paraphrase / STS | 20/26 | 14/26 | 0.407 | ~15 s | 458 MB |
+| **`multilingual-e5-small`** — *shipped* | retrieval | **26/26** | **16/26** | 0.437 | ~19 s | 470 MB |
+| `multilingual-e5-base` | retrieval | 25/26 | 18/26 | 0.561 | ~42 s | 1082 MB |
+| `Solon-embeddings-base-0.1` | retrieval, French | 26/26 | **22/26** | **0.723** | ~43 s | 1082 MB |
 
 Every retrieval-trained model beats the suggested one on both tiers. That is the finding.
 
 **What shipped, and the honest caveat.** `multilingual-e5-small` is better on every measure and worse on
 none, and it costs essentially nothing: the same **384 dimensions**, so the index width, the storage layout
-and the code are untouched; 470 MB of weights against 458; 15.0 s against 14.4 s to ingest; 849 MB against
-845 MB of peak RSS. Re-ingesting produced 387 chunks whose text, page and document are **identical** to the
-previous model's, because both use the XLM-R tokenizer and the budget did not move.
+and the code are untouched; 470 MB of weights against 458; 843 MB against 838 MB of peak RSS; and
+ingestion within a few seconds of the incumbent's. Re-ingesting produced 387 chunks whose text, page and
+document are **identical** to the previous model's, because both use the XLM-R tokenizer and the budget did
+not move.
 
 But its Tier B margin is **+2 of 26**, and `eval/DECISION.md` pre-registered that a margin of two or fewer is
 inside the sampling noise of a set this size. So the switch does not rest on Tier B. It rests on Tier A
@@ -410,25 +411,44 @@ inside the sampling noise of a set this size. So the switch does not rest on Tie
 retrieval-trained model should beat a paraphrase-distilled one at retrieval. That is a judgement, and it is
 labelled as one rather than dressed up as a measurement.
 
-**What the rule said, and where the rule was wrong.** Run mechanically, `eval/report.py` returns
-**KEEP THE INCUMBENT**: every candidate breached a cost gate. Three of those gates were badly calibrated,
-and only the results made it visible.
+**What reproduces, and what does not.** Every evaluation in this section was re-run end to end from a
+clean state. All seven runs reproduced their retrieval figures **exactly** — the same hits at every *k*, the
+same MRR to four decimals — and peak RSS reproduced to within 1%. Wall-clock ingestion did not: the same
+Solon configuration measured 76 s in one session and 43 s in another on the same laptop. The seconds column
+above is therefore written as an order of magnitude and not to a decimal place, and the argument below rests
+on the columns that reproduce.
 
-- The **ingestion gate** was a ratio against a 14-second baseline. Ingestion is a one-off batch over seven
-  documents; 76 seconds is not a reason to veto a model. It should have been an absolute ceiling.
-- The **peak-RSS gate** compared totals where it should have compared marginals. The 845 MB baseline is
+**What the rule said, and where the rule was wrong.** Run mechanically, `eval/report.py` returns
+**KEEP THE INCUMBENT**: at the window-derived budget the rule scores them at, every candidate breached a
+cost gate. Two of those gates were badly calibrated, and only the results made it visible.
+
+- The **ingestion gate** was a ratio against a ~15-second baseline. Ingestion is a one-off batch over seven
+  documents, and the measurement is not even stable to a factor the gate can resolve. It should have been an
+  absolute ceiling, not a ratio.
+- The **peak-RSS gate** compared totals where it should have compared marginals. The 838 MB baseline is
   mostly the torch runtime, which every candidate shares, so a 2x total gate demands that the model itself
   add less than the whole runtime. Worse, it turned out to track **chunk size** rather than model:
-  e5-small measured 1712 MB at a 494-token budget and 849 MB at 110.
+  e5-small measured 1708 MB at a 494-token budget and 843 MB at 110.
 - The **margin** gate was right, and it is why `Solon-embeddings-base-0.1` is not the shipped model despite
   winning by +8.
 
-The verdict is published as it came out rather than quietly re-tuned. Pre-registration does not mean never
-revising a rule; it means never revising it silently.
+**But that is not why the shipped model was rejected, and it would be convenient to pretend otherwise.**
+The rule scores each model at the budget its own window earns; `multilingual-e5-small` ships at a *measured*
+110 instead, so the row the rule judged is not the row that ships. Apply the same gates to the row that does
+ship and it **clears all three cost gates** — ingestion, RSS and weights — and fails only the margin gate,
+at +2 where more than +2 is required. `eval/report.py` prints this directly beneath the verdict rather than
+leaving it to prose.
+
+So the override is not a rescued gate. It is one explicit judgement against the one gate that was calibrated
+correctly, and the case for it is the Tier A result above, not the cost table. The verdict is published as
+it came out rather than quietly re-tuned: pre-registration does not mean never revising a rule, it means
+never revising it silently, and never letting a rule's genuine flaws launder a decision they did not
+actually drive.
 
 **Why not Solon-base.** It is the strongest model measured here by a distance, and on French administrative
 text that is not a surprise. It also costs 1082 MB of weights against 470 — doubling the model baked into
-the image — and 94.7 ms against 79.6 ms to embed a query. On a corpus of 387 chunks, with n = 26, doubling
+the image — and, measured side by side at the same budget, 109 ms against 76 ms to embed a query. On a
+corpus of 387 chunks, with n = 26, doubling
 the deliverable for a result that size was not a trade I was willing to make. It is the first thing I would
 revisit against a larger labelled set.
 
@@ -506,7 +526,7 @@ The alternative, `IndexFlatL2`, returns a _squared_ Euclidean distance where **l
 that in a field named `score` inverts the ordering for any client that sorts descending. Note also that
 `normalize_embeddings` defaults to `False`; leaving it off turns retrieval into length-biased inner-product
 search, where long chunks win on magnitude alone. Normalisation happens in exactly one place, in
-`SentenceTransformerEmbedder.encode`.
+`SentenceTransformerEmbedder._encode`, through which both the document and the query paths run.
 
 ### PDF extraction: pypdfium2
 
@@ -742,10 +762,11 @@ bug, not just a text bug.
 
 ### Explicitly out of scope
 
-No LLM or answer generation, no UI, no authentication, no database, no OCR, no reranker, no job queue, no
-hybrid retrieval. And no claim that one small multilingual model is production-grade for French
-public-sector documents — it is a reasonable CPU-runnable baseline, chosen because the exercise asked for
-one.
+No LLM or answer generation, no authentication, no database, no OCR, no reranker, no job queue, no hybrid
+retrieval. The page at `/` is a thin client over the same endpoint rather than a product surface — no
+pagination, no filters, no highlighting, no state. And no claim that one small multilingual model is
+production-grade for French public-sector documents: it won a four-model bake-off over 26 queries, which is
+a reason to prefer it over the alternatives measured, not evidence that it is sufficient.
 
 ---
 
@@ -813,7 +834,9 @@ stays fast and offline.
 licensed — see [PDF extraction: pypdfium2](#pdf-extraction-pypdfium2), where that constraint decided
 the extractor.
 
-The seven source PDFs are **not** covered by this licence and are not included in this repository.
+The licence covers the code. The seven source PDFs in [`sample-pdfs/`](sample-pdfs/) are the public
+documents supplied with the exercise, committed so that every number on this page can be reproduced; they
+are not mine to license and remain the property of the bodies that published them.
 
 ## Author
 

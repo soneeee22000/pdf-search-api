@@ -1,22 +1,22 @@
 {
   "model_name": "intfloat/multilingual-e5-small",
   "embedding_dim": 384,
-  "max_seq_length": 128,
+  "max_seq_length": 512,
   "chunk_token_budget": 110,
   "query_prefix": "query: ",
   "document_prefix": "passage: ",
   "n_chunks": 387,
   "n_pages": 64,
-  "ingestion_seconds": 15.03,
+  "ingestion_seconds": 19.17,
   "index_bytes": 594477,
   "model_disk_bytes": 493292868,
-  "peak_rss_bytes": 889831424,
+  "peak_rss_bytes": 884285440,
   "latency_ms": {
-    "embed_p50": 79.61,
-    "embed_max": 202.589,
-    "search_p50": 0.257,
-    "search_max": 0.36,
-    "embed_over_search": 310.4
+    "embed_p50": 75.962,
+    "embed_max": 166.518,
+    "search_p50": 0.256,
+    "search_max": 1.497,
+    "embed_over_search": 297.1
   },
   "tier_a": {
     "n": 26,

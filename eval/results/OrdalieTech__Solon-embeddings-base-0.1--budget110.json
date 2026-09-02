@@ -1,22 +1,22 @@
 {
   "model_name": "OrdalieTech/Solon-embeddings-base-0.1",
   "embedding_dim": 768,
-  "max_seq_length": 128,
+  "max_seq_length": 512,
   "chunk_token_budget": 110,
   "query_prefix": "query : ",
   "document_prefix": "",
   "n_chunks": 387,
   "n_pages": 64,
-  "ingestion_seconds": 76.42,
+  "ingestion_seconds": 42.94,
   "index_bytes": 1188909,
   "model_disk_bytes": 1134354813,
-  "peak_rss_bytes": 1190109184,
+  "peak_rss_bytes": 1177288704,
   "latency_ms": {
-    "embed_p50": 94.745,
-    "embed_max": 146.568,
-    "search_p50": 0.321,
-    "search_max": 1.542,
-    "embed_over_search": 294.7
+    "embed_p50": 109.311,
+    "embed_max": 210.579,
+    "search_p50": 0.33,
+    "search_max": 0.513,
+    "embed_over_search": 331.2
   },
   "tier_a": {
     "n": 26,

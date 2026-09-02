@@ -7,16 +7,16 @@
   "document_prefix": "",
   "n_chunks": 103,
   "n_pages": 64,
-  "ingestion_seconds": 55.45,
+  "ingestion_seconds": 52.7,
   "index_bytes": 316461,
   "model_disk_bytes": 1134354813,
-  "peak_rss_bytes": 2352115712,
+  "peak_rss_bytes": 2347970560,
   "latency_ms": {
-    "embed_p50": 143.386,
-    "embed_max": 308.406,
-    "search_p50": 0.241,
-    "search_max": 1.753,
-    "embed_over_search": 595.3
+    "embed_p50": 144.409,
+    "embed_max": 279.241,
+    "search_p50": 0.25,
+    "search_max": 0.334,
+    "embed_over_search": 578.2
   },
   "tier_a": {
     "n": 26,
