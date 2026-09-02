@@ -1,8 +1,5 @@
-# The brief itself stays out: publishing it would put Datapolitics' hiring
-# material in a public repository. The seven PDFs are published -- they are
-# public municipal records, and shipping them makes the ingestion run
-# reproducible by anyone reading this.
-CHALLENGE.md
+# The seven PDFs and the brief are both published, so that everything this
+# README claims can be checked against the inputs it was measured on.
 storage/
 storage.staging/
 *.faiss

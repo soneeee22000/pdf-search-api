@@ -363,7 +363,8 @@ and both hurt dense retrieval in ways described in
 
 ### Why this model, and how I know
 
-The brief suggests `paraphrase-multilingual-MiniLM-L12-v2`, and says the suggestion is only an example.
+The brief ([`CHALLENGE.md`](CHALLENGE.md)) suggests `paraphrase-multilingual-MiniLM-L12-v2`, and says the
+suggestion is only an example.
 This section is why it was not simply taken.
 
 Two things about it are worth noticing. It is a **paraphrase model, not a retrieval model** — a multilingual
