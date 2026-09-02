@@ -89,6 +89,7 @@ def run_ingestion(
     cannot change a chunk that would otherwise have been produced.
     """
     started = time.monotonic()
+    storage.ensure_writable(output_dir)
     pdf_paths = discover_pdfs(input_dir)
     logger.info("found %d PDF file(s) in %s", len(pdf_paths), input_dir)
 
@@ -192,6 +193,10 @@ def main(argv: list[str] | None = None) -> int:
     from pdf_search.embeddings import SentenceTransformerEmbedder
 
     try:
+        # Both of these cost seconds -- an OCR engine loads ONNX or probes a
+        # binary, the embedder loads weights. Neither is worth paying for if the
+        # snapshot could never be written, so the cheapest check runs first.
+        storage.ensure_writable(args.output_dir)
         ocr_engine = build_engine(args.ocr)
         embedder = SentenceTransformerEmbedder(args.model)
         run_ingestion(args.input_dir, args.output_dir, embedder, ocr_engine=ocr_engine)

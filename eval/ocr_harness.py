@@ -64,7 +64,9 @@ def fold(text: str, keep_spaces: bool = True) -> str:
     """
     decomposed = unicodedata.normalize("NFKD", text)
     stripped = "".join(c for c in decomposed if not unicodedata.combining(c))
-    stripped = stripped.replace("'", "'").casefold()
+    # U+2019 is what French typography and most OCR emit; NFKD leaves it alone,
+    # so an apostrophe would otherwise never match the gold strings' U+0027.
+    stripped = stripped.replace("’", "'").casefold()
     collapsed = _WHITESPACE.sub(" ", stripped).strip()
     return collapsed if keep_spaces else collapsed.replace(" ", "")
 

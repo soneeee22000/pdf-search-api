@@ -73,6 +73,42 @@ def test_snapshot_bytes_do_not_depend_on_the_host_platform(
         assert b"\r" not in raw, f"{filename} carries a platform newline"
 
 
+def test_an_unwritable_output_directory_is_refused_before_any_work(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The check must happen first, and must name the fix.
+
+    Docker creates a bind-mounted host directory as root when it does not exist,
+    and this image does not run as root. Without this check the failure lands in
+    `save`, after the model has loaded and the whole corpus has been embedded,
+    as a bare PermissionError. Diagnosing that from a traceback is much harder
+    than reading one sentence before anything starts.
+    """
+    target = tmp_path / "storage"
+
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(Path, "mkdir", refuse)
+
+    with pytest.raises(RuntimeError) as caught:
+        storage.ensure_writable(target)
+
+    message = str(caught.value)
+    assert "cannot write to the output directory" in message
+    assert "mkdir -p storage" in message, "the error must name the fix, not just the failure"
+
+
+def test_a_writable_output_directory_is_created_and_left_clean(tmp_path: Path) -> None:
+    """The probe must not leave anything behind."""
+    target = tmp_path / "nested" / "storage"
+
+    storage.ensure_writable(target)
+
+    assert target.is_dir()
+    assert list(target.iterdir()) == [], "the write probe was not cleaned up"
+
+
 def test_round_trip_preserves_metadata(tmp_path: Path, fake_embedder) -> None:
     """Save then load returns the same chunks in the same order."""
     loaded = storage.load(_save(tmp_path, fake_embedder))

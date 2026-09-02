@@ -1,5 +1,7 @@
 # The seven PDFs and the brief are both published, so that everything this
 # README claims can be checked against the inputs it was measured on.
+# Local pre-flight checklist, not part of the deliverable.
+RUNBOOK.md
 storage/
 storage.staging/
 *.faiss

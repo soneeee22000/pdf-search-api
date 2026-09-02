@@ -188,10 +188,38 @@ def _verify_binding(
 
 
 def _validate(directory: Path) -> None:
-    """Reload a freshly written snapshot and confirm it is internally consistent."""
-    loaded = load(directory)
-    if loaded.index.ntotal != len(loaded.chunks):
-        raise ValueError("written snapshot is inconsistent; refusing to publish it")
+    """Reload a freshly written snapshot before publishing it.
+
+    The assertions live in `load`, which is the point: the staged snapshot is
+    put through exactly the code path the API will use, so a snapshot that
+    cannot be served is never swapped in. Re-checking the vector count here
+    would be unreachable -- `load` raises IndexUnavailableError on it first.
+    """
+    load(directory)
+
+
+def ensure_writable(directory: Path) -> None:
+    """Fail before ingestion starts if the snapshot could never be written.
+
+    A bind-mounted host directory that does not yet exist is created by the
+    Docker daemon as root, and this image deliberately does not run as root. The
+    write then fails inside `save` -- after the model has loaded and the whole
+    corpus has been embedded, as a bare PermissionError traceback. The work is
+    identical either way; only the diagnosis changes, so it is worth one syscall
+    to turn a traceback at the end into a sentence at the start.
+    """
+    probe = directory / ".write-probe"
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        probe.touch()
+        probe.unlink()
+    except OSError as exc:
+        raise RuntimeError(
+            f"cannot write to the output directory {directory}: {exc}. "
+            "If this is a Docker bind mount, create the directory on the host before running "
+            "so that it belongs to you rather than to root -- 'mkdir -p storage' -- or pass "
+            "--user \"$(id -u):$(id -g)\" to docker run."
+        ) from exc
 
 
 def load(directory: Path) -> LoadedIndex:

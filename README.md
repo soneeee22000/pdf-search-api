@@ -65,7 +65,10 @@ docker build -t pdf-search-api .
 # 2. The seven supplied PDFs are already in sample-pdfs/ -- or point step 3 at any folder
 ls sample-pdfs/        # 7 files
 
-# 3. Ingest — the PDF folder path is the command-line argument
+# 3. Ingest — the PDF folder path is the command-line argument.
+#    Create storage/ first: a bind mount to a path that does not exist is
+#    created by the daemon as root, and this image does not run as root.
+mkdir -p storage
 docker run --rm \
   -v "$(pwd)/sample-pdfs:/input:ro" \
   -v "$(pwd)/storage:/storage" \
@@ -107,6 +110,8 @@ pulls the Swagger UI assets from a CDN, so it renders only where there is one:
 ```powershell
 docker build -t pdf-search-api .
 
+New-Item -ItemType Directory -Force storage | Out-Null
+
 docker run --rm `
   -v "${PWD}/sample-pdfs:/input:ro" `
   -v "${PWD}/storage:/storage" `
@@ -143,7 +148,7 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu   # CPU-only,
 PYTHONPATH=src python -m pdf_search.ingest --input-dir ./sample-pdfs --output-dir ./storage
 PYTHONPATH=src uvicorn pdf_search.api:app --reload
 
-PYTHONPATH=src pytest        # 90 tests, no network, no model download
+PYTHONPATH=src pytest        # 92 tests, no network, no model download
 ```
 
 ---
@@ -666,6 +671,28 @@ class of drift bugs a partial re-ingest path creates. The snapshot is written to
 reloaded and validated, then swapped in. This is deliberately **not** described as an atomic directory swap —
 a portable one does not exist — which is why ingestion and serving are separate commands.
 
+### The container does not run as root, which costs one line of setup
+
+`storage/` is created before the first `docker run` above, and that is not tidiness. A bind mount whose host
+path does not exist yet is created by the Docker daemon, owned by **root** — while the image deliberately
+runs as an unprivileged user. On Docker Desktop the file-sharing layer usually hides this; on a Linux host it
+does not, and the write fails.
+
+Left alone it fails in the worst possible place: `storage.save` is the last step, so the model has already
+loaded and the entire corpus has already been embedded before a bare `PermissionError` traceback appears.
+The work is identical either way — only the diagnosis changes. So ingestion probes the output directory
+before it does anything, and refuses with the fix in the message:
+
+```
+error: cannot write to the output directory /storage: [Errno 13] Permission denied: '/storage/.write-probe'.
+If this is a Docker bind mount, create the directory on the host before running so that it belongs to you
+rather than to root -- 'mkdir -p storage' -- or pass --user "$(id -u):$(id -g)" to docker run.
+```
+
+Running as root inside the container would also have removed the symptom. That trade — a permission problem
+made invisible in exchange for a container that can write anywhere it is mounted — is not one worth making
+for a service whose whole job is to read documents.
+
 ### Consistency is asserted, not assumed
 
 FAISS stores only vectors and row ids, so chunk metadata lives in a JSONL sidecar whose line order _is_ the
@@ -934,7 +961,7 @@ pdf-search-api/
 PYTHONPATH=src pytest
 ```
 
-90 tests, running in under two seconds with **no network access and no model download** — the embedder and
+92 tests, running in under two seconds with **no network access and no model download** — the embedder and
 the token counter are both injected, and the API fixtures replace the startup builder before the application
 starts rather than after, so no test touches a real model or a real index directory. They cover the token
 budget including the overlap case that used to breach it, word-level text conservation, page attribution,
