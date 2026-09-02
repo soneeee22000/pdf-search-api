@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -78,6 +79,28 @@ def unavailable_client(monkeypatch):
     monkeypatch.setattr(api, "_build_service", _fail)
     with TestClient(app) as test_client:
         yield test_client
+
+
+def test_concurrent_requests_return_what_a_serial_request_returns(client) -> None:
+    """The service holds one index and one embedder for every request.
+
+    `search` is a sync def, so Starlette runs it in a threadpool and several
+    requests touch that shared state at once. Any per-request state that leaked
+    onto the service would corrupt results under load and nowhere else, and it
+    would corrupt them silently -- the response stays well-formed and ordered.
+    So the contract is pinned here: concurrency changes nothing about what a
+    query returns.
+    """
+    queries = [TEXTS[0], "convention de mecenat", "conseil municipal", TEXTS[-1]]
+    serial = {q: client.post("/search", json={"query": q, "top_k": 3}).json() for q in queries}
+
+    work = [queries[i % len(queries)] for i in range(64)]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        got = list(pool.map(lambda q: (q, client.post("/search", json={"query": q, "top_k": 3})), work))
+
+    for query, response in got:
+        assert response.status_code == 200
+        assert response.json() == serial[query]
 
 
 def test_search_returns_the_five_specified_fields(client) -> None:

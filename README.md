@@ -139,7 +139,7 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu   # CPU-only,
 PYTHONPATH=src python -m pdf_search.ingest --input-dir ./sample-pdfs --output-dir ./storage
 PYTHONPATH=src uvicorn pdf_search.api:app --reload
 
-PYTHONPATH=src pytest        # 81 tests, no network, no model download
+PYTHONPATH=src pytest        # 83 tests, no network, no model download
 ```
 
 ---
@@ -559,6 +559,34 @@ also free.
 I would move off flat at roughly 10⁶ vectors, or earlier if p99 latency or concurrent QPS mattered — flat
 search cost is linear per query.
 
+### One model, many threads
+
+`search` is a `def`, not an `async def`, so Starlette runs it in a threadpool rather than on the event loop.
+That is the right choice — a synchronous forward pass on the event loop would stall every other connection —
+but it means concurrent requests call `encode_query` on **one shared `SentenceTransformer`** at the same
+time. Whether that is safe is a fair question and the answer is measured, not assumed.
+
+96 requests over 16 threads, against the real model and the real index, compared against the same queries
+issued one at a time:
+
+| | Serial | 16 threads |
+| --- | ------ | ---------- |
+| p50 latency | 154 ms | 428 ms |
+| p95 latency | — | 532 ms |
+| Throughput | ~6.5 req/s | **37.3 req/s** |
+| Responses differing from serial | — | **0 of 96** |
+
+Beneath the API, `encode_query` under 16 threads returns vectors **bitwise identical** to the serial ones —
+maximum absolute difference 0.000e+00. That is the expected result rather than a lucky one: inference is a
+read-only forward pass over frozen weights with no per-call state on the model, and the index is opened
+read-only. A regression test pins the API-level half of this, because a shared-state bug here would be
+silent — the response stays well-formed, ordered and plausible, and only the content is wrong.
+
+The throughput number is the more interesting one. Latency roughly triples for a 5.7x gain in throughput,
+because torch is already multi-threaded internally: 16 application threads oversubscribe the same cores its
+intra-op pool is using. For a real deployment the answer is `torch.set_num_threads(1)` with concurrency
+scaled by process instead, and a bounded queue in front — not more threads.
+
 ### Full rebuild, no incremental path
 
 Every ingestion run rebuilds from scratch. At this scale a rebuild costs seconds, and it removes the whole
@@ -823,7 +851,7 @@ pdf-search-api/
 PYTHONPATH=src pytest
 ```
 
-81 tests, running in under two seconds with **no network access and no model download** — the embedder and
+83 tests, running in under two seconds with **no network access and no model download** — the embedder and
 the token counter are both injected, and the API fixtures replace the startup builder before the application
 starts rather than after, so no test touches a real model or a real index directory. They cover the token
 budget including the overlap case that used to breach it, word-level text conservation, page attribution,
