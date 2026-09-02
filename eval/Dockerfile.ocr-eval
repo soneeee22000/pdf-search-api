@@ -3,11 +3,16 @@
 # Tesseract needs a system package and RapidOCR does not, which is one of the
 # things being compared -- but a comparison run on two different operating
 # systems would measure the machines rather than the engines. The service image
-# itself does not contain this layer; see the root Dockerfile.
+# itself does not carry this layer; see the root Dockerfile.
+#
+# The corpus is mounted rather than copied, both because .dockerignore keeps it
+# out of the build context and because it matches how the service image is run.
 #
 #   docker build -f eval/Dockerfile.ocr-eval -t pdf-search-ocr-eval .
-#   docker run --rm -v "$(pwd)/eval/results:/app/eval/results" \
-#       pdf-search-ocr-eval --engine tesseract
+#   docker run --rm \
+#     -v "$(pwd)/sample-pdfs:/input:ro" \
+#     -v "$(pwd)/eval/results:/app/eval/results" \
+#     pdf-search-ocr-eval --engine tesseract --input-dir /input
 FROM pdf-search-api:latest
 
 USER root
@@ -19,7 +24,6 @@ RUN apt-get update \
 RUN pip install --no-cache-dir pytesseract==0.3.13 rapidocr-onnxruntime==1.4.4
 
 COPY eval/ ./eval/
-COPY sample-pdfs/ ./sample-pdfs/
 
 RUN chown -R appuser:appuser /app/eval
 USER appuser

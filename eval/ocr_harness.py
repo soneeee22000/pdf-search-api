@@ -13,6 +13,7 @@ hide the defect that actually matters.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import statistics
@@ -25,6 +26,9 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from eval.harness import _hit_rank as embedding_rank  # noqa: E402
+from eval.harness import load_queries as load_embedding_queries  # noqa: E402
 
 from pdf_search import storage  # noqa: E402
 from pdf_search.embeddings import SentenceTransformerEmbedder  # noqa: E402
@@ -121,10 +125,12 @@ def evaluate(engine_name: str, input_dir: Path, queries: list[OcrQuery], work_di
             if rank is not None and counter == "string":
                 ranks.append(rank)
 
-    n = len(queries)
+    scanned = queries[0].document_name
+    regression = _existing_corpus_unchanged(loaded, embedder, scanned)
+
     return {
         "engine": engine_name or "none",
-        "n_gold": n,
+        "n_gold": len(queries),
         "fidelity_strict": strict,
         "fidelity_ignoring_spaces": loose,
         f"retrieval_string_hits@{PRIMARY_K}": hits_string,
@@ -133,7 +139,41 @@ def evaluate(engine_name: str, input_dir: Path, queries: list[OcrQuery], work_di
         "n_chunks": manifest.n_chunks,
         "extraction_seconds": round(extraction_seconds, 2),
         "ingestion_seconds": round(ingestion_seconds, 2),
-        "chunk_texts_sha256": storage.load(snapshot).manifest.metadata_sha256,
+        **regression,
+    }
+
+
+def _existing_corpus_unchanged(
+    loaded: Any, embedder: Any, scanned_document: str
+) -> dict[str, Any]:
+    """Check the clause that OCR must be strictly additive.
+
+    Chunk *indices* necessarily shift, because the scanned document sorts third
+    of seven and its chunks are inserted rather than appended -- that is exactly
+    what adding a document to a corpus does. What must not change is the text of
+    every chunk that already existed, and what the existing labelled set returns.
+    So the digest is taken over (document, page, text) of the chunks that do not
+    come from the scanned document, and the 26 embedding queries are re-scored.
+    """
+    payload = "\n".join(
+        f"{c.document_name}|{c.page_number}|{c.text}"
+        for c in loaded.chunks
+        if c.document_name != scanned_document
+    )
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    hits = {"A": 0, "B": 0}
+    for query in load_embedding_queries(Path("eval/queries.jsonl")):
+        results = loaded.search(embedder.encode_query(query.query), SEARCH_TOP_K)
+        rank = embedding_rank(results, query)
+        if rank is not None and rank <= PRIMARY_K:
+            hits[query.tier] += 1
+
+    return {
+        "pre_existing_chunks": sum(1 for c in loaded.chunks if c.document_name != scanned_document),
+        "pre_existing_chunks_sha256": digest,
+        "embedding_tier_a_hits@5": hits["A"],
+        "embedding_tier_b_hits@5": hits["B"],
     }
 
 
