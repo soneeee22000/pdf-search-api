@@ -61,6 +61,30 @@ def test_chunking_is_deterministic(count_tokens) -> None:
     assert [c.text for c in first] == [c.text for c in second]
 
 
+def test_pages_recovered_by_ocr_are_chunked_like_any_other(count_tokens) -> None:
+    """A recognised page must reach the index, not just the summary.
+
+    The chunker originally tested `status != "extracted"`, so every page OCR
+    recovered was read correctly and then dropped on the floor. Nothing failed:
+    ingestion reported the pages as recovered, the text was right, and the
+    document stayed invisible to search. Only an end-to-end retrieval check
+    caught it, which is why the status set is asserted here directly.
+    """
+    page = PageRecord(
+        document_name="scan.pdf",
+        page_number=1,
+        status="ocr",
+        char_count=40,
+        text="Construction d'un abri de jardin sur la parcelle BE420.",
+    )
+
+    chunks = chunk_page(page, count_tokens)
+
+    assert chunks, "a recognised page produced no chunks"
+    assert chunks[0].page_number == 1
+    assert "BE420" in chunks[0].text
+
+
 def test_pages_without_text_produce_no_chunks(count_tokens) -> None:
     """A page with no text layer contributes nothing but is not an error."""
     page = PageRecord(document_name="scan.pdf", page_number=1, status="no_text", char_count=0)

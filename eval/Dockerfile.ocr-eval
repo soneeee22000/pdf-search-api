@@ -17,8 +17,13 @@ FROM pdf-search-api:latest
 
 USER root
 
+# tesseract-ocr/-fra for one candidate. libgl1 and libglib2.0-0 for the other:
+# rapidocr-onnxruntime depends on opencv-python, which links libGL even when it
+# never opens a window. That is worth recording -- RapidOCR was chosen as a
+# candidate precisely because it needed no system package, and it needs two.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-fra \
+ && apt-get install -y --no-install-recommends \
+      tesseract-ocr tesseract-ocr-fra libgl1 libglib2.0-0 \
  && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir pytesseract==0.3.13 rapidocr-onnxruntime==1.4.4

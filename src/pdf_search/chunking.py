@@ -18,6 +18,13 @@ from collections.abc import Callable, Iterable
 
 from pdf_search.schemas import ChunkRecord, PageRecord
 
+# Statuses that carry text worth indexing. A page recovered by OCR is text like
+# any other here; the distinction matters to the ingestion summary, not to the
+# chunker. Testing against 'extracted' alone silently discarded every recognised
+# page -- the text was read correctly and then thrown away, which the fidelity
+# metric could not see and only the retrieval metric caught.
+CHUNKABLE_STATUSES = ("extracted", "ocr")
+
 TokenCounter = Callable[[str], int]
 
 # The default, and what the incumbent model earns. Ingestion does not use it:
@@ -47,7 +54,7 @@ def chunk_page(
     `count_tokens` is injected so the unit tests can run without downloading a
     model; ingestion passes the real tokenizer.
     """
-    if page.status != "extracted" or not page.text.strip():
+    if page.status not in CHUNKABLE_STATUSES or not page.text.strip():
         return []
 
     pieces = _split_to_budget(page.text, count_tokens, budget)

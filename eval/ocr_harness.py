@@ -29,7 +29,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from eval.harness import _hit_rank as embedding_rank  # noqa: E402
 from eval.harness import load_queries as load_embedding_queries  # noqa: E402
-
 from pdf_search import storage  # noqa: E402
 from pdf_search.embeddings import SentenceTransformerEmbedder  # noqa: E402
 from pdf_search.ingest import run_ingestion  # noqa: E402

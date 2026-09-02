@@ -1,0 +1,16 @@
+{
+  "engine": "none",
+  "n_gold": 16,
+  "fidelity_strict": 0,
+  "fidelity_ignoring_spaces": 0,
+  "retrieval_string_hits@5": 0,
+  "retrieval_question_hits@5": 0,
+  "median_rank_when_found": null,
+  "n_chunks": 387,
+  "extraction_seconds": 1.6,
+  "ingestion_seconds": 24.58,
+  "pre_existing_chunks": 387,
+  "pre_existing_chunks_sha256": "7eccec38eb429da2c458a31be487aab56ba2e472cbc5f3f873917134fd1276eb",
+  "embedding_tier_a_hits@5": 26,
+  "embedding_tier_b_hits@5": 16
+}
