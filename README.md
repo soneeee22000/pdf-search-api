@@ -95,6 +95,19 @@ curl -s localhost:8000/search \
   -d '{"query":"Quelle est la position du document sur les politiques publiques ?","top_k":5}'
 ```
 
+**Which block to run.** The `bash` block above is for **macOS and Linux**; the PowerShell equivalents
+below are for **Windows**. They differ only in shell syntax — the image, the arguments and the result are
+identical, and there is no platform-specific code anywhere in the project.
+
+On **Apple Silicon** the image builds natively for `linux/arm64` with no flags: every pinned dependency
+publishes an `aarch64` wheel — torch from the CPU index, plus `faiss-cpu`, `pypdfium2` and `numpy` — and
+`fastapi`, `pydantic`, `sentence-transformers` and `pytesseract` are pure Python. `tesseract-ocr` and its
+French data are standard Debian `arm64` packages.
+
+The one step that is not cosmetic is `mkdir -p storage` before the ingest run, and
+[the container does not run as root](#the-container-does-not-run-as-root-which-costs-one-line-of-setup)
+explains why it matters on Linux and what the service does about it.
+
 Three things are served. `/` and `/health` work with no network at all; `/docs` serves its own HTML but
 pulls the Swagger UI assets from a CDN, so it renders only where there is one:
 
@@ -426,6 +439,22 @@ one existing query moving one rank. Worth taking — but it is a judgement, and 
 written says the additivity clause **fails**, because requiring every query to return exactly what it returned
 before is unsatisfiable by any additive change. That is a defect in my rule, not a finding about OCR, and
 `eval/OCR_DECISION.md` publishes it as it fell rather than rewriting it to agree.
+
+**What it looks like.** The same question — *quelle assurance le bénéficiaire doit-il souscrire ?* —
+against the same corpus, the same model and the same client. Without OCR the scanned document is not in the
+index at all, so the best available answer is a budget line from the council's accounts:
+
+![Without OCR: the top hit is an insurance budget line from the deliberations register](docs/ocr-before.png)
+
+With `--ocr tesseract` the two scanned pages are recognised and indexed, and the actual obligation — read
+off an image — takes the top two places:
+
+![With OCR: the top two hits are the recognised planning-permission pages](docs/ocr-after.png)
+
+Note that this is a *paraphrased* question, not the exact wording on the page: the recognised text is good
+enough to be embedded and retrieved semantically, not merely string-matched. Note also the margin. The
+recovered page wins at **0.858** against **0.823** for the wrong answer — correct, but not by much, which is
+the honest reason the next paragraph keeps OCR off by default.
 
 **OCR is opt-in.** The engine is in the image (118 MB), the flag is `--ocr tesseract`, and the default is off,
 because recognised text is less trustworthy than an embedded text layer and the caller should choose to accept

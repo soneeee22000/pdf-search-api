@@ -3,6 +3,7 @@
 # Local pre-flight checklist, not part of the deliverable.
 RUNBOOK.md
 storage/
+storage.*/
 storage.staging/
 *.faiss
 
